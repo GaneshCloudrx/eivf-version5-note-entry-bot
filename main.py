@@ -11,6 +11,7 @@ from config import (
 from modules.utils import init_log_file, close_log_file, log_print
 from modules.login import open_application, login, close_application
 from modules.configuation_change import change_configuration
+from modules.patient_search import open_patient_search
 from modules.heartbeat import HeartbeatManager
 
 def main():
@@ -63,8 +64,13 @@ def main():
             log_print("Login failed. Exiting...")
             close_application(window)
             return
-
         log_print("Login successful!")
+
+        patient_search_window = open_patient_search(window)
+
+        #is_patient_search_successful = patient_search(patient_search_window)
+
+        
         
     except KeyboardInterrupt:
         log_print("\n=== Automation stopped by user ===")

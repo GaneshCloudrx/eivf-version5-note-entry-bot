@@ -4,7 +4,6 @@ Login module - handles application opening and user login
 from pywinauto import Application, Desktop
 import time
 from modules.utils import log_print
-from modules.popups import detect_popup, handle_popup
 
 def open_application(app_path, target_title, max_wait_time=30):
     """
@@ -189,32 +188,21 @@ def login(window, email, pin, clinic_code):
             # First, check for Rx Profile window (success case - fastest path)
             try:
                 for win in desktop.windows():
+                    
                     try:
-                        if win.window_text() == "Rx Profile":
-                            log_print("Login successful - Rx Profile window detected")
+                        if win.window_text() == "eIVF" and win.element_info.class_name == "ThunderRT6MDIForm":
+                            log_print("Login successful - eIVF window detected")
+                            # Maximize the eIVF window
+                            try:
+                                win.maximize()
+                                log_print("eIVF window maximized")
+                            except Exception as e:
+                                log_print(f"Could not maximize window: {str(e)}")
                             return True
                     except:
                         pass
             except:
                 pass
-
-            # Only check for popup after first 2 seconds (popups take time to appear)
-            if attempt >= 4:  # After 2 seconds (4 * 0.5)
-                popup_info = detect_popup(
-                    window=window,
-                    title_contains='Logon Failed',
-                    max_wait_time=1  # Quick check, don't wait long
-                )
-
-                if popup_info:
-                    popup_title = popup_info.get('title', 'Login Failed')
-                    log_print(f"Found popup: {popup_title}")
-                    handled = handle_popup(popup_info)
-                    if handled:
-                        # If popup was handled, login failed
-                        return False
-                    else:
-                        return False
 
         # If we get here, Rx Profile not found and no popup
         log_print("Rx Profile window not detected - login may still be processing")
