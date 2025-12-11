@@ -11,7 +11,7 @@ from config import (
 from modules.utils import init_log_file, close_log_file, log_print
 from modules.login import open_application, login, close_application
 from modules.configuation_change import change_configuration
-from modules.patient_search import open_patient_search
+from modules.patient_search import search_patient_by_dob_and_last_name, verify_patient_match
 from modules.heartbeat import HeartbeatManager
 
 def main():
@@ -45,17 +45,17 @@ def main():
         # Step 2: Change configuration (execute once after application opens)
         #check_and_wait_if_paused(heartbeat_manager)
         log_print("Configuring application settings...")
-        config_success = change_configuration(
-            window=window,
-            http_address="https://ww2.fertilityinstitute.com/eivf_provider",
-            facility_name="FINO"
-            #facility_name="AFCC;HFIIVF;TFI;IFI;NFI;ARI;DALLAS;AUSTIN;SA;FSH;PFCIVF;RBA;PATHWAYS;ASPIREHFI;CRMORLANDO;MLF;RMG; IVFMD"
-        )
+        #config_success = change_configuration(
+        #    window=window,
+        #    http_address="https://ww2.fertilityinstitute.com/eivf_provider",
+        #    facility_name="FINO"
+        #    #facility_name="AFCC;HFIIVF;TFI;IFI;NFI;ARI;DALLAS;AUSTIN;SA;FSH;PFCIVF;RBA;PATHWAYS;ASPIREHFI;CRMORLANDO;MLF;RMG; IVFMD"
+        #)
 
-        if not config_success:
-            log_print("Configuration change failed, but continuing...")
-        else:
-            log_print("Configuration updated successfully!")
+        #if not config_success:
+        #    log_print("Configuration change failed, but continuing...")
+        #else:
+        #    log_print("Configuration updated successfully!")
 
         # Step 3: Login (execute once after configuration)
         
@@ -65,10 +65,24 @@ def main():
             close_application(window)
             return
         log_print("Login successful!")
+        
 
-        patient_search_window = open_patient_search(window)
-
-        #is_patient_search_successful = patient_search(patient_search_window)
+        # Step 4: Search patient by DOB and Last Name
+        # Patient details for testing
+        patient_first_name = "Abbie"
+        patient_last_name = "Test"
+        patient_dob = "01011980"  # DOB format: MMddyyyy (change this to correct DOB)
+        
+        # Search by DOB and Last Name
+        if not search_patient_by_dob_and_last_name(window, patient_dob, patient_last_name):
+            log_print("Patient search failed. Exiting...")
+            return
+        
+        # Step 5: Verify patient match
+        if verify_patient_match(patient_first_name, patient_last_name, patient_dob):
+            log_print(f"Patient '{patient_first_name} {patient_last_name}' found and verified!")
+        else:
+            log_print(f"Patient '{patient_first_name} {patient_last_name}' not found or details don't match")
 
         
         
