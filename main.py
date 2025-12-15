@@ -14,6 +14,11 @@ from modules.configuation_change import change_configuration
 from modules.patient_search import search_patient_by_dob_and_last_name
 from modules.color_addition import set_color
 from modules.heartbeat import HeartbeatManager
+from modules.patient_search import (
+            click_select_button, click_alert_ok_button
+        )
+from modules.note_addition import (click_new_button,
+    write_note, click_save_button, verify_patient_explorer_match)
 
 def main():
     """Main function - 24/7 continuous automation with heartbeat and pause/resume"""
@@ -80,10 +85,6 @@ def main():
             return
 
         # Step 5: Click Select button
-        from modules.patient_search import (
-            click_select_button, click_alert_ok_button, click_new_button,
-            write_note, click_save_button, verify_patient_explorer_match
-        )
 
         log_print("Clicking Select button...")
         time.sleep(1)  # Wait for search results to load
