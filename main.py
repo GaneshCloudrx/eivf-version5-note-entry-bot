@@ -45,18 +45,18 @@ def main():
 
         # Step 2: Change configuration (execute once after application opens)
         #check_and_wait_if_paused(heartbeat_manager)
-        log_print("Configuring application settings...")
-        #config_success = change_configuration(
-        #    window=window,
-        #    http_address="https://ww2.fertilityinstitute.com/eivf_provider",
-        #    facility_name="FINO"
-        #    #facility_name="AFCC;HFIIVF;TFI;IFI;NFI;ARI;DALLAS;AUSTIN;SA;FSH;PFCIVF;RBA;PATHWAYS;ASPIREHFI;CRMORLANDO;MLF;RMG; IVFMD"
-        #)
+        # log_print("Configuring application settings...")
+        # config_success = change_configuration(
+        #     window=window,
+        #     http_address="https://ww2.fertilityinstitute.com/eivf_provider",
+        #     facility_name="FINO"
+        #     #facility_name="AFCC;HFIIVF;TFI;IFI;NFI;ARI;DALLAS;AUSTIN;SA;FSH;PFCIVF;RBA;PATHWAYS;ASPIREHFI;CRMORLANDO;MLF;RMG; IVFMD"
+        # )
 
-        #if not config_success:
-        #    log_print("Configuration change failed, but continuing...")
-        #else:
-        #    log_print("Configuration updated successfully!")
+        # if not config_success:
+        #     log_print("Configuration change failed, but continuing...")
+        # else:
+        #     log_print("Configuration updated successfully!")
 
         # Step 3: Login (execute once after configuration)
 

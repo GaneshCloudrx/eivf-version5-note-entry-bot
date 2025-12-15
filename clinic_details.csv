@@ -1,0 +1,3 @@
+Clinic_Id,Clinic_Name,clinic_name_sf,URL,Facility,Username,Password1,Color,login_status,note_bot_machine,lamar_bot_machine,ins_pulling_bot_machine
+34,Fertility Institute of New Orleans (FINO),FINO,https://ww2.fertilityinstitute.com/eivf_provider,FINO,ksilva,Password1,Purple,success,CLDRPA21,CLDRPA124,CLDRPA76
+4,Aspire Fertility Austin,ASPIREAUSTIN,https://eivfdfw.aspirefertility.com/eivf_provider,AFCC;HFIIVF;TFI;IFI;NFI;ARI;DALLAS;AUSTIN;SA;FSH;PFCIVF;RBA;PATHWAYS;ASPIREHFI;CRMORLANDO;MLF;RMG; IVFMD,bkearns,Redneck69*,Orange,success,CLDRPA19,CLDRPA55,CLDRPA76

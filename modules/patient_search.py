@@ -866,7 +866,14 @@ def click_save_button():
 
 def click_new_button():
     """
-    Click the 'New' button in the patient toolbar.
+    Click the 'New' button in the patient toolbar (Quick Summary window).
+
+    New button properties:
+        - Name: "New"
+        - ControlType: Button
+        - ClassName: "ThunderRT6CommandButton"
+        - AutomationId: "23"
+        - Located in: Quick Summary window > Frame3 group
 
     Returns True if clicked, False otherwise.
     """
@@ -878,28 +885,33 @@ def click_new_button():
             log_print("Could not find main eIVF window")
             return False
 
-        # Try direct lookup first
+        # Try using AutomationId first (most reliable)
         try:
-            new_btn = main_window.child_window(title="New", control_type="Button")
-            if new_btn.exists(timeout=2):
+            new_btn = main_window.child_window(
+                auto_id="23",
+                control_type="Button",
+                class_name="ThunderRT6CommandButton"
+            )
+            if new_btn.exists(timeout=3):
                 new_btn.click_input()
-                log_print("New button clicked (direct)")
+                log_print("New button clicked (using AutomationId 23)")
                 time.sleep(0.5)
                 return True
-        except Exception:
-            pass
+        except Exception as e:
+            log_print(f"AutomationId lookup failed: {e}")
 
-        # Try searching button descendants by exact text
+        # Fallback: Try by title
         try:
-            for btn in main_window.descendants(control_type="Button"):
-                try:
-                    if btn.window_text().strip().lower() == "new":
-                        btn.click_input()
-                        log_print("New button clicked (found by descendants)")
-                        time.sleep(0.5)
-                        return True
-                except Exception:
-                    continue
+            new_btn = main_window.child_window(
+                title="New",
+                control_type="Button",
+                class_name="ThunderRT6CommandButton"
+            )
+            if new_btn.exists(timeout=2):
+                new_btn.click_input()
+                log_print("New button clicked (using title)")
+                time.sleep(0.5)
+                return True
         except Exception:
             pass
 
