@@ -12,6 +12,7 @@ from modules.utils import init_log_file, close_log_file, log_print
 from modules.login import open_application, login, close_application
 from modules.configuation_change import change_configuration
 from modules.patient_search import search_patient_by_dob_and_last_name
+from modules.color_addition import set_color
 from modules.heartbeat import HeartbeatManager
 
 def main():
@@ -124,6 +125,8 @@ def main():
                     time.sleep(5)
                     if click_save_button():
                         log_print("Note saved successfully!")
+                        # Step 11: Set color of the note
+                        set_color("orange")
                     else:
                         log_print("Failed to save note")
                         return
