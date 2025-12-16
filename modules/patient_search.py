@@ -5,6 +5,77 @@ import re
 from modules.utils import log_print
 
 
+# Cached Patient Search window for reuse across functions
+_cached_patient_search_window = None
+
+
+def wrap_window_properly(window):
+    """
+    Ensure window has child_window() method by wrapping it properly.
+    UIAWrapper objects from descendants() don't have child_window().
+    This function connects to the window via its handle to get full functionality.
+    """
+    if window is None:
+        return None
+    
+    # Check if window already has child_window method
+    if hasattr(window, 'child_window'):
+        return window
+    
+    # Try to get handle and connect properly
+    try:
+        handle = window.handle
+        if handle:
+            # Connect to the window using its handle
+            app = Application(backend="uia").connect(handle=handle)
+            wrapped_window = app.window(handle=handle)
+            log_print(f"Window wrapped properly via handle: {handle}")
+            return wrapped_window
+    except Exception as e:
+        log_print(f"Could not wrap window via handle: {str(e)[:50]}")
+    
+    # Fallback: try to connect via process ID
+    try:
+        pid = window.element_info.process_id
+        if pid:
+            app = Application(backend="uia").connect(process=pid)
+            # Try to find the Patient Search window
+            try:
+                wrapped = app.window(title_re=".*Patient.*Search.*")
+                if wrapped.exists(timeout=1):
+                    log_print(f"Window wrapped properly via PID: {pid}")
+                    return wrapped
+            except:
+                pass
+    except Exception as e:
+        log_print(f"Could not wrap window via PID: {str(e)[:50]}")
+    
+    # Return original if wrapping fails
+    return window
+
+
+def get_cached_patient_search_window():
+    """Get the cached Patient Search window."""
+    global _cached_patient_search_window
+    return _cached_patient_search_window
+
+
+def set_cached_patient_search_window(window):
+    """Set the cached Patient Search window (properly wrapped)."""
+    global _cached_patient_search_window
+    # Wrap the window to ensure it has child_window() method
+    _cached_patient_search_window = wrap_window_properly(window)
+    if _cached_patient_search_window:
+        log_print("Patient Search window cached for reuse")
+
+
+def clear_cached_patient_search_window():
+    """Clear the cached Patient Search window."""
+    global _cached_patient_search_window
+    _cached_patient_search_window = None
+    log_print("Patient Search window cache cleared")
+
+
 # Reusable Desktop instance for UIA backend
 def get_desktop():
     """Get Desktop instance with UIA backend."""
@@ -161,7 +232,7 @@ def open_patient_search_from_sidebar(main_window):
 
 def find_patient_search_window(return_window=False, max_wait=5):
     """
-    Find patient search window/dialog.
+    Find patient search window/dialog and cache it for reuse.
 
     Tries multiple methods:
     1. As child of main eIVF window
@@ -176,323 +247,196 @@ def find_patient_search_window(return_window=False, max_wait=5):
         If return_window=False: True if found, False otherwise
         If return_window=True: window object or None
     """
-    # Get eIVF process ID to filter windows
-    app, main_window = get_eivf_main_window()
-    eivf_pid = None
-    if main_window:
+    # Check if we already have a cached window that's still valid
+    cached_window = get_cached_patient_search_window()
+    if cached_window:
         try:
-            eivf_pid = main_window.element_info.process_id
+            if cached_window.exists(timeout=0.5):
+                log_print("Using cached Patient Search window")
+                if return_window:
+                    return cached_window
+                return True
+            else:
+                log_print("Cached window no longer valid, searching again...")
+                clear_cached_patient_search_window()
         except:
-            pass
+            clear_cached_patient_search_window()
+    
+    # ============================================================
+    # SIMPLE DIRECT APPROACH using exact window properties:
+    # <wnd app='eivf.exe' cls='ThunderRT6FormDC' title=' Patient Search ' />
+    # ============================================================
+    
+    app, main_window = get_eivf_main_window()
+    if not main_window:
+        log_print("Could not find main eIVF window")
+        return None if return_window else False
 
     # Wait for Patient Search window to appear
     for attempt in range(max_wait * 2):  # Check every 0.5 seconds
-        # Method 1: Try as top-level desktop window FIRST (most likely after button click)
-        # But only match windows from the same eIVF process
+        log_print(f"Search attempt {attempt + 1}/{max_wait * 2}...")
+        
+        # PRIMARY METHOD: Direct window search by class and title
+        # Title is ' Patient Search ' with leading/trailing spaces
         try:
-            desktop = get_desktop()
-            for win in desktop.windows():
-                try:
-                    win_title = win.window_text()
-                    win_class = win.element_info.class_name
-                    win_pid = win.element_info.process_id
-                    
-                    # Only check windows from eIVF process
-                    if eivf_pid:
-                        if win_pid != eivf_pid:
-                            continue
-                    else:
-                        log_print(f"Warning: eIVF PID not available, skipping process filter")
-                    
-                    # Must have ThunderRT6FormDC class AND patient/search in title
-                    # Also verify it's not a false match (like Cursor editor)
-                    if "ThunderRT6FormDC" in win_class:
-                        title_lower = win_title.lower()
-                        if "patient" in title_lower and "search" in title_lower:
-                            # Additional validation: exclude common false matches
-                            if "cursor" not in title_lower and "chrome" not in title_lower and ".py" not in title_lower:
-                                log_print(f"Found Patient Search window (method 1: desktop by title+class): '{win_title}', PID: {win_pid}, eIVF PID: {eivf_pid}")
-                                if return_window:
-                                    return win
-                                return True
-                            else:
-                                log_print(f"Skipping false match: '{win_title}' (contains cursor/chrome/.py)")
-                except:
-                    continue
+            patient_search = main_window.child_window(
+                title=" Patient Search ",
+                class_name="ThunderRT6FormDC"
+            )
+            if patient_search.exists(timeout=0.5):
+                log_print("Found Patient Search window (direct: cls='ThunderRT6FormDC' title=' Patient Search ')")
+                set_cached_patient_search_window(patient_search)
+                if return_window:
+                    return patient_search
+                return True
         except Exception as e:
-            pass
-
-        # Method 2: Try desktop windows by class name only (from eIVF process)
+            log_print(f"Direct search error: {str(e)[:50]}")
+        
+        # FALLBACK: Try with title regex to handle space variations
         try:
-            desktop = get_desktop()
-            for win in desktop.windows():
-                try:
-                    win_pid = win.element_info.process_id
-                    # Only check windows from eIVF process
-                    if eivf_pid:
-                        if win_pid != eivf_pid:
-                            continue
-                    
-                    win_class = win.element_info.class_name
-                    if "ThunderRT6FormDC" in win_class:
-                        win_title = win.window_text()
-                        title_lower = win_title.lower()
-                        if "patient" in title_lower and "search" in title_lower:
-                            # Additional validation: exclude common false matches
-                            if "cursor" not in title_lower and "chrome" not in title_lower and ".py" not in title_lower:
-                                log_print(f"Found Patient Search window (method 2: desktop by class): '{win_title}', PID: {win_pid}")
-                                if return_window:
-                                    return win
-                                return True
-                            else:
-                                log_print(f"Skipping false match: '{win_title}' (contains cursor/chrome/.py)")
-                except:
-                    continue
+            patient_search = main_window.child_window(
+                title_re=".*Patient.*Search.*",
+                class_name="ThunderRT6FormDC"
+            )
+            if patient_search.exists(timeout=0.5):
+                log_print("Found Patient Search window (regex match)")
+                set_cached_patient_search_window(patient_search)
+                if return_window:
+                    return patient_search
+                return True
         except:
             pass
-
-        # Method 3: Try as child of main window
-        app, main_window = get_eivf_main_window()
-        if main_window:
-            try:
-                # Try with title regex and class name
-                patient_search = main_window.child_window(
-                    title_re=".*\\s*Patient\\s+Search\\s*.*",
-                    class_name="ThunderRT6FormDC",
-                    control_type="Window"
-                )
-
-                if patient_search.exists(timeout=0.5):
-                    log_print(f"Found Patient Search window (method 3: child window)")
-                    if return_window:
-                        return patient_search
-                    return True
-            except:
-                pass
-
-            # Method 4: Try with just class name and check title
-            try:
-                patient_search = main_window.child_window(
-                    class_name="ThunderRT6FormDC",
-                    control_type="Window"
-                )
-                
-                if patient_search.exists(timeout=0.5):
-                    try:
-                        win_text = patient_search.window_text()
-                        if "patient" in win_text.lower() and "search" in win_text.lower():
-                            log_print(f"Found Patient Search window (method 4: child by class): '{win_text}'")
-                            if return_window:
-                                return patient_search
-                            return True
-                    except:
-                        pass
-            except:
-                pass
-
-            # Method 5: Search all child windows
-            try:
-                child_windows = main_window.children(control_type="Window")
-                for child in child_windows:
-                    try:
-                        child_text = child.window_text()
-                        child_class = child.element_info.class_name
-                        if ("patient" in child_text.lower() and "search" in child_text.lower()) and "ThunderRT6FormDC" in child_class:
-                            log_print(f"Found Patient Search window (method 5: iterate children): '{child_text}'")
-                            if return_window:
-                                return child
-                            return True
-                    except:
-                        continue
-            except:
-                pass
-
-            # Method 6: Try different control types (Dialog, Pane, etc.)
-            for control_type in ["Dialog", "Pane", "Window"]:
-                try:
-                    patient_search = main_window.child_window(
-                        title_re=".*Patient.*Search.*",
-                        control_type=control_type
-                    )
-                    if patient_search.exists(timeout=0.3):
-                        try:
-                            win_text = patient_search.window_text()
-                            if "patient" in win_text.lower() and "search" in win_text.lower():
-                                log_print(f"Found Patient Search window (method 6: {control_type}): '{win_text}'")
-                                if return_window:
-                                    return patient_search
-                                return True
-                        except:
-                            pass
-                except:
-                    pass
-
+        
         time.sleep(0.5)
 
-    # Debug: List all windows to help diagnose
-    log_print("Debug: Listing windows after search failed...")
-    app, main_window = get_eivf_main_window()
-    if main_window:
-        try:
-            log_print("Child windows of main window:")
-            child_windows = main_window.children(control_type="Window")
-            log_print(f"Found {len(child_windows)} child windows")
-            for idx, child in enumerate(child_windows):
-                try:
-                    child_text = child.window_text()
-                    child_class = child.element_info.class_name
-                    log_print(f"  Window {idx+1}: Title='{child_text}', Class='{child_class}'")
-                except Exception as e:
-                    log_print(f"  Window {idx+1}: (could not read properties: {e})")
-        except Exception as e:
-            log_print(f"Debug: Could not list child windows: {e}")
+    log_print(f"Patient Search window not found after waiting {max_wait} seconds")
     
-    # Also list all desktop windows (show all, not just matches)
+    # Debug: List child windows
     try:
-        log_print("All desktop windows (showing all):")
-        desktop = get_desktop()
-        desktop_windows = desktop.windows()
-        log_print(f"Found {len(desktop_windows)} desktop windows")
-        for idx, win in enumerate(desktop_windows):
+        log_print("Debug: Listing child windows...")
+        child_windows = main_window.children(control_type="Window")
+        for idx, child in enumerate(child_windows):
             try:
-                win_title = win.window_text()
-                win_class = win.element_info.class_name
-                # Show all windows, highlight potential matches
-                if "patient" in win_title.lower() or "search" in win_title.lower() or "ThunderRT6FormDC" in win_class:
-                    log_print(f"  *** Window {idx+1}: Title='{win_title}', Class='{win_class}' ***")
-                else:
-                    log_print(f"  Window {idx+1}: Title='{win_title}', Class='{win_class}'")
+                child_text = child.window_text()
+                child_class = child.element_info.class_name
+                log_print(f"  Window {idx+1}: Title='{child_text}', Class='{child_class}'")
             except Exception as e:
                 log_print(f"  Window {idx+1}: (could not read: {e})")
     except Exception as e:
-        log_print(f"Debug: Could not list desktop windows: {e}")
+        log_print(f"Debug: Could not list child windows: {e}")
 
-    log_print("Patient search window not found after waiting")
     return None if return_window else False
 
 
 def get_patient_search_window(max_wait=5):
     """
     Find and return the Patient Search window.
+    Uses cached window if available and valid.
 
     Args:
         max_wait: Maximum seconds to wait for window to appear (default: 5)
 
     Returns: (app, window) tuple or (None, None) if not found
     """
-    log_print("Searching for Patient Search window from main window...")
+    # Check if we have a cached window that's still valid
+    cached_window = get_cached_patient_search_window()
+    if cached_window:
+        try:
+            # Try multiple ways to validate the cached window
+            is_valid = False
+            try:
+                # Method 1: Try exists() method
+                is_valid = cached_window.exists(timeout=0.3)
+            except:
+                pass
+            
+            if not is_valid:
+                try:
+                    # Method 2: Try to get window_text() - if it works, window is still valid
+                    win_text = cached_window.window_text()
+                    if win_text and "patient" in win_text.lower():
+                        is_valid = True
+                        log_print(f"Cached window validated via window_text: '{win_text}'")
+                except:
+                    pass
+            
+            if not is_valid:
+                try:
+                    # Method 3: Try to check element_info
+                    if cached_window.element_info:
+                        is_valid = True
+                        log_print("Cached window validated via element_info")
+                except:
+                    pass
+            
+            if is_valid:
+                log_print("Using cached Patient Search window")
+                app, _ = get_eivf_main_window()
+                return app, cached_window
+            else:
+                log_print("Cached window no longer valid, searching again...")
+                clear_cached_patient_search_window()
+        except Exception as e:
+            log_print(f"Error validating cached window: {str(e)[:50]}")
+            clear_cached_patient_search_window()
+    
+    log_print("Searching for Patient Search window...")
+    
+    # ============================================================
+    # SIMPLE DIRECT APPROACH using exact window properties:
+    # <wnd app='eivf.exe' cls='ThunderRT6FormDC' title=' Patient Search ' />
+    # ============================================================
+    
     app, main_window = get_eivf_main_window()
-
     if not main_window:
         log_print("Could not find main eIVF window")
         return None, None
 
-    # Get eIVF process ID to filter windows
+    # Get eIVF process ID
     eivf_pid = None
     try:
         eivf_pid = main_window.element_info.process_id
     except:
         pass
 
-    # Wait for Patient Search window to appear with retry logic
+    # Wait for Patient Search window to appear
     for attempt in range(max_wait * 2):  # Check every 0.5 seconds
-        # Method 1: Try desktop windows first (from eIVF process)
+        log_print(f"Search attempt {attempt + 1}/{max_wait * 2}...")
+        
+        # PRIMARY METHOD: Direct window search by class and title
+        # Title is ' Patient Search ' with leading/trailing spaces
         try:
-            desktop = get_desktop()
-            for win in desktop.windows():
-                try:
-                    win_pid = win.element_info.process_id
-                    # Only check windows from eIVF process
-                    if eivf_pid and win_pid != eivf_pid:
-                        continue
-                    
-                    win_title = win.window_text()
-                    win_class = win.element_info.class_name
-                    if "ThunderRT6FormDC" in win_class:
-                        title_lower = win_title.lower()
-                        if "patient" in title_lower and "search" in title_lower:
-                            # Additional validation: exclude common false matches
-                            if "cursor" not in title_lower and "chrome" not in title_lower and ".py" not in title_lower:
-                                log_print(f"Found Patient Search window (method 1: desktop): '{win_title}', PID: {win_pid}")
-                                return app, win
-                            else:
-                                log_print(f"Skipping false match in get_patient_search_window: '{win_title}'")
-                except:
-                    continue
-        except:
-            pass
-
-        # Method 2: Try as child of main window
-        try:
-            # Try with title regex and class name
-            # Regex matches: optional spaces + "Patient" + one or more spaces + "Search" + optional spaces
             patient_search = main_window.child_window(
-                title_re=".*\\s*Patient\\s+Search\\s*.*",
-                class_name="ThunderRT6FormDC",
-                control_type="Window"
+                title=" Patient Search ",
+                class_name="ThunderRT6FormDC"
             )
-
             if patient_search.exists(timeout=0.5):
-                log_print("Found Patient Search window (method 2: child window)")
+                log_print("Found Patient Search window (direct: cls='ThunderRT6FormDC' title=' Patient Search ')")
+                set_cached_patient_search_window(patient_search)
                 return app, patient_search
         except Exception as e:
-            pass  # Continue trying
+            log_print(f"Direct search error: {str(e)[:50]}")
         
-        # Method 2: Try with just class name and check title
+        # FALLBACK: Try with title regex to handle space variations
         try:
             patient_search = main_window.child_window(
-                class_name="ThunderRT6FormDC",
-                control_type="Window"
+                title_re=".*Patient.*Search.*",
+                class_name="ThunderRT6FormDC"
             )
-            
             if patient_search.exists(timeout=0.5):
-                try:
-                    win_text = patient_search.window_text()
-                    if "patient" in win_text.lower() and "search" in win_text.lower():
-                        log_print(f"Found Patient Search window (method 2): '{win_text}'")
-                        return app, patient_search
-                except:
-                    pass
-        except Exception as e:
-            pass  # Continue trying
-        
-        # Method 3: Search all child windows by class first
-        try:
-            child_windows = main_window.children(control_type="Window")
-            for child in child_windows:
-                try:
-                    child_text = child.window_text()
-                    child_class = child.element_info.class_name
-                    if ("patient" in child_text.lower() and "search" in child_text.lower()) and "ThunderRT6FormDC" in child_class:
-                        log_print(f"Found Patient Search window (method 3): '{child_text}'")
-                        return app, child
-                except:
-                    continue
-        except Exception as e:
-            pass  # Continue trying
-        
-        # Method 4: Try without class name requirement (more lenient)
-        try:
-            child_windows = main_window.children(control_type="Window")
-            for child in child_windows:
-                try:
-                    child_text = child.window_text()
-                    if "patient" in child_text.lower() and "search" in child_text.lower():
-                        log_print(f"Found Patient Search window (method 4, lenient): '{child_text}'")
-                        return app, child
-                except:
-                    continue
-        except Exception as e:
-            pass  # Continue trying
+                log_print("Found Patient Search window (regex match)")
+                set_cached_patient_search_window(patient_search)
+                return app, patient_search
+        except:
+            pass
         
         time.sleep(0.5)
 
     log_print(f"Patient Search window not found after waiting {max_wait} seconds")
-    log_print("Attempted multiple detection methods but window was not found")
     
-    # Debug: List all child windows to help diagnose
+    # Debug: List child windows
     try:
-        log_print("Debug: Listing all child windows...")
+        log_print("Debug: Listing child windows...")
         child_windows = main_window.children(control_type="Window")
         for idx, child in enumerate(child_windows):
             try:
