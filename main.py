@@ -12,7 +12,7 @@ from modules.utils import init_log_file, close_log_file, log_print
 from modules.login import open_application, login, close_application
 from modules.configuation_change import change_configuration
 from modules.patient_search import search_patient_by_dob_and_last_name
-from modules.color_addition import set_color
+from modules.color_addition import set_color, search_patient_by_phone_number_and_first_name
 from modules.heartbeat import HeartbeatManager
 from modules.patient_search import (
             click_select_button, click_alert_ok_button
@@ -78,11 +78,15 @@ def main():
         patient_first_name = "Abbie"
         patient_last_name = "Test"
         patient_dob = "01011980"  # DOB format: MMddyyyy (change this to correct DOB)
+        patient_phone_number = "(985) 222-5555"
 
         # Search by DOB and Last Name
         if not search_patient_by_dob_and_last_name(window, patient_dob, patient_last_name):
             log_print("Patient search failed. Exiting...")
             return
+        # if not search_patient_by_phone_number_and_first_name(patient_phone_number, patient_first_name):
+        #     log_print("Patient search failed. Exiting...")
+        #     return
 
         # Step 5: Click Select button
 
