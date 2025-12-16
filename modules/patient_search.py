@@ -98,6 +98,54 @@ def click_sidebar_icon(main_window, icon_index):
         return False
 
 
+def click_patient_search_button():
+    """
+    Click the "Patient Search" button directly using AutomationId.
+
+    Button properties from Inspect:
+        - Name: "Patient Search"
+        - AutomationId: "4"
+        - ClassName: "ThunderRT6CommandButton"
+        - ControlType: Button
+
+    Returns:
+        True if successful, False otherwise
+    """
+    log_print("Attempting to click Patient Search button directly...")
+
+    try:
+        # Get the main eIVF window
+        app, main_window = get_eivf_main_window()
+
+        if not main_window:
+            log_print("Could not find main eIVF window")
+            return False
+
+        # Try to find the Patient Search button by AutomationId first (most reliable)
+        try:
+            patient_search_button = main_window.child_window(
+                auto_id="4",
+                control_type="Button",
+                class_name="ThunderRT6CommandButton"
+            )
+
+            if patient_search_button.exists(timeout=3):
+                log_print("Found Patient Search button by AutomationId")
+                patient_search_button.click_input()
+                log_print("Patient Search button clicked successfully")
+                time.sleep(2)  # Increased wait time for window to appear
+                return True
+        except Exception as e:
+            log_print(f"Could not find button by AutomationId: {e}")
+
+        log_print("Patient Search button not found")
+        return False
+
+    except Exception as e:
+        log_print(f"Error clicking Patient Search button: {str(e)}")
+        return False
+
+
 def open_patient_search_from_sidebar(main_window):
     """
     Click on "Patient Explorer" button in the left sidebar.
@@ -115,8 +163,10 @@ def find_patient_search_window(return_window=False, max_wait=5):
     """
     Find patient search window/dialog.
 
-    Note: Patient Search is a child window (ThunderRT6FormDC) inside the eIVF MDI window,
-    not a top-level desktop window.
+    Tries multiple methods:
+    1. As child of main eIVF window
+    2. As top-level desktop window
+    3. By searching all windows with different control types
 
     Args:
         return_window: If True, returns window object; if False, returns boolean
@@ -126,73 +176,338 @@ def find_patient_search_window(return_window=False, max_wait=5):
         If return_window=False: True if found, False otherwise
         If return_window=True: window object or None
     """
-    # First get the main eIVF window
+    # Get eIVF process ID to filter windows
     app, main_window = get_eivf_main_window()
-
-    if not main_window:
-        log_print("Could not find main eIVF window")
-        return None if return_window else False
-
-    # Wait for Patient Search child window to appear
-    for attempt in range(max_wait * 2):  # Check every 0.5 seconds
+    eivf_pid = None
+    if main_window:
         try:
-            # Patient Search is a child window with class ThunderRT6FormDC
-            # Title is " Patient Search " (with spaces)
-            patient_search = main_window.child_window(
-                title_re=".*Patient.*Search.*",
-                class_name="ThunderRT6FormDC",
-                control_type="Window"
-            )
-
-            if patient_search.exists(timeout=0.5):
-                log_print(f"Found Patient Search window")
-                if return_window:
-                    return patient_search
-                return True
+            eivf_pid = main_window.element_info.process_id
         except:
             pass
 
+    # Wait for Patient Search window to appear
+    for attempt in range(max_wait * 2):  # Check every 0.5 seconds
+        # Method 1: Try as top-level desktop window FIRST (most likely after button click)
+        # But only match windows from the same eIVF process
+        try:
+            desktop = get_desktop()
+            for win in desktop.windows():
+                try:
+                    win_title = win.window_text()
+                    win_class = win.element_info.class_name
+                    win_pid = win.element_info.process_id
+                    
+                    # Only check windows from eIVF process
+                    if eivf_pid:
+                        if win_pid != eivf_pid:
+                            continue
+                    else:
+                        log_print(f"Warning: eIVF PID not available, skipping process filter")
+                    
+                    # Must have ThunderRT6FormDC class AND patient/search in title
+                    # Also verify it's not a false match (like Cursor editor)
+                    if "ThunderRT6FormDC" in win_class:
+                        title_lower = win_title.lower()
+                        if "patient" in title_lower and "search" in title_lower:
+                            # Additional validation: exclude common false matches
+                            if "cursor" not in title_lower and "chrome" not in title_lower and ".py" not in title_lower:
+                                log_print(f"Found Patient Search window (method 1: desktop by title+class): '{win_title}', PID: {win_pid}, eIVF PID: {eivf_pid}")
+                                if return_window:
+                                    return win
+                                return True
+                            else:
+                                log_print(f"Skipping false match: '{win_title}' (contains cursor/chrome/.py)")
+                except:
+                    continue
+        except Exception as e:
+            pass
+
+        # Method 2: Try desktop windows by class name only (from eIVF process)
+        try:
+            desktop = get_desktop()
+            for win in desktop.windows():
+                try:
+                    win_pid = win.element_info.process_id
+                    # Only check windows from eIVF process
+                    if eivf_pid:
+                        if win_pid != eivf_pid:
+                            continue
+                    
+                    win_class = win.element_info.class_name
+                    if "ThunderRT6FormDC" in win_class:
+                        win_title = win.window_text()
+                        title_lower = win_title.lower()
+                        if "patient" in title_lower and "search" in title_lower:
+                            # Additional validation: exclude common false matches
+                            if "cursor" not in title_lower and "chrome" not in title_lower and ".py" not in title_lower:
+                                log_print(f"Found Patient Search window (method 2: desktop by class): '{win_title}', PID: {win_pid}")
+                                if return_window:
+                                    return win
+                                return True
+                            else:
+                                log_print(f"Skipping false match: '{win_title}' (contains cursor/chrome/.py)")
+                except:
+                    continue
+        except:
+            pass
+
+        # Method 3: Try as child of main window
+        app, main_window = get_eivf_main_window()
+        if main_window:
+            try:
+                # Try with title regex and class name
+                patient_search = main_window.child_window(
+                    title_re=".*\\s*Patient\\s+Search\\s*.*",
+                    class_name="ThunderRT6FormDC",
+                    control_type="Window"
+                )
+
+                if patient_search.exists(timeout=0.5):
+                    log_print(f"Found Patient Search window (method 3: child window)")
+                    if return_window:
+                        return patient_search
+                    return True
+            except:
+                pass
+
+            # Method 4: Try with just class name and check title
+            try:
+                patient_search = main_window.child_window(
+                    class_name="ThunderRT6FormDC",
+                    control_type="Window"
+                )
+                
+                if patient_search.exists(timeout=0.5):
+                    try:
+                        win_text = patient_search.window_text()
+                        if "patient" in win_text.lower() and "search" in win_text.lower():
+                            log_print(f"Found Patient Search window (method 4: child by class): '{win_text}'")
+                            if return_window:
+                                return patient_search
+                            return True
+                    except:
+                        pass
+            except:
+                pass
+
+            # Method 5: Search all child windows
+            try:
+                child_windows = main_window.children(control_type="Window")
+                for child in child_windows:
+                    try:
+                        child_text = child.window_text()
+                        child_class = child.element_info.class_name
+                        if ("patient" in child_text.lower() and "search" in child_text.lower()) and "ThunderRT6FormDC" in child_class:
+                            log_print(f"Found Patient Search window (method 5: iterate children): '{child_text}'")
+                            if return_window:
+                                return child
+                            return True
+                    except:
+                        continue
+            except:
+                pass
+
+            # Method 6: Try different control types (Dialog, Pane, etc.)
+            for control_type in ["Dialog", "Pane", "Window"]:
+                try:
+                    patient_search = main_window.child_window(
+                        title_re=".*Patient.*Search.*",
+                        control_type=control_type
+                    )
+                    if patient_search.exists(timeout=0.3):
+                        try:
+                            win_text = patient_search.window_text()
+                            if "patient" in win_text.lower() and "search" in win_text.lower():
+                                log_print(f"Found Patient Search window (method 6: {control_type}): '{win_text}'")
+                                if return_window:
+                                    return patient_search
+                                return True
+                        except:
+                            pass
+                except:
+                    pass
+
         time.sleep(0.5)
+
+    # Debug: List all windows to help diagnose
+    log_print("Debug: Listing windows after search failed...")
+    app, main_window = get_eivf_main_window()
+    if main_window:
+        try:
+            log_print("Child windows of main window:")
+            child_windows = main_window.children(control_type="Window")
+            log_print(f"Found {len(child_windows)} child windows")
+            for idx, child in enumerate(child_windows):
+                try:
+                    child_text = child.window_text()
+                    child_class = child.element_info.class_name
+                    log_print(f"  Window {idx+1}: Title='{child_text}', Class='{child_class}'")
+                except Exception as e:
+                    log_print(f"  Window {idx+1}: (could not read properties: {e})")
+        except Exception as e:
+            log_print(f"Debug: Could not list child windows: {e}")
+    
+    # Also list all desktop windows (show all, not just matches)
+    try:
+        log_print("All desktop windows (showing all):")
+        desktop = get_desktop()
+        desktop_windows = desktop.windows()
+        log_print(f"Found {len(desktop_windows)} desktop windows")
+        for idx, win in enumerate(desktop_windows):
+            try:
+                win_title = win.window_text()
+                win_class = win.element_info.class_name
+                # Show all windows, highlight potential matches
+                if "patient" in win_title.lower() or "search" in win_title.lower() or "ThunderRT6FormDC" in win_class:
+                    log_print(f"  *** Window {idx+1}: Title='{win_title}', Class='{win_class}' ***")
+                else:
+                    log_print(f"  Window {idx+1}: Title='{win_title}', Class='{win_class}'")
+            except Exception as e:
+                log_print(f"  Window {idx+1}: (could not read: {e})")
+    except Exception as e:
+        log_print(f"Debug: Could not list desktop windows: {e}")
 
     log_print("Patient search window not found after waiting")
     return None if return_window else False
 
 
-def get_patient_search_window():
+def get_patient_search_window(max_wait=5):
     """
     Find and return the Patient Search window.
 
-    Note: Patient Search is a child window (ThunderRT6FormDC) inside the eIVF MDI window,
-    not a top-level desktop window.
+    Args:
+        max_wait: Maximum seconds to wait for window to appear (default: 5)
 
     Returns: (app, window) tuple or (None, None) if not found
     """
-    # First get the main eIVF window
+    log_print("Searching for Patient Search window from main window...")
     app, main_window = get_eivf_main_window()
 
     if not main_window:
         log_print("Could not find main eIVF window")
         return None, None
 
+    # Get eIVF process ID to filter windows
+    eivf_pid = None
     try:
-        # Patient Search is a child window with class ThunderRT6FormDC
-        # Title is " Patient Search " (with spaces)
-        patient_search = main_window.child_window(
-            title_re=".*Patient.*Search.*",
-            class_name="ThunderRT6FormDC",
-            control_type="Window"
-        )
+        eivf_pid = main_window.element_info.process_id
+    except:
+        pass
 
-        if patient_search.exists(timeout=3):
-            log_print("Found Patient Search window")
-            return app, patient_search
+    # Wait for Patient Search window to appear with retry logic
+    for attempt in range(max_wait * 2):  # Check every 0.5 seconds
+        # Method 1: Try desktop windows first (from eIVF process)
+        try:
+            desktop = get_desktop()
+            for win in desktop.windows():
+                try:
+                    win_pid = win.element_info.process_id
+                    # Only check windows from eIVF process
+                    if eivf_pid and win_pid != eivf_pid:
+                        continue
+                    
+                    win_title = win.window_text()
+                    win_class = win.element_info.class_name
+                    if "ThunderRT6FormDC" in win_class:
+                        title_lower = win_title.lower()
+                        if "patient" in title_lower and "search" in title_lower:
+                            # Additional validation: exclude common false matches
+                            if "cursor" not in title_lower and "chrome" not in title_lower and ".py" not in title_lower:
+                                log_print(f"Found Patient Search window (method 1: desktop): '{win_title}', PID: {win_pid}")
+                                return app, win
+                            else:
+                                log_print(f"Skipping false match in get_patient_search_window: '{win_title}'")
+                except:
+                    continue
+        except:
+            pass
+
+        # Method 2: Try as child of main window
+        try:
+            # Try with title regex and class name
+            # Regex matches: optional spaces + "Patient" + one or more spaces + "Search" + optional spaces
+            patient_search = main_window.child_window(
+                title_re=".*\\s*Patient\\s+Search\\s*.*",
+                class_name="ThunderRT6FormDC",
+                control_type="Window"
+            )
+
+            if patient_search.exists(timeout=0.5):
+                log_print("Found Patient Search window (method 2: child window)")
+                return app, patient_search
+        except Exception as e:
+            pass  # Continue trying
+        
+        # Method 2: Try with just class name and check title
+        try:
+            patient_search = main_window.child_window(
+                class_name="ThunderRT6FormDC",
+                control_type="Window"
+            )
+            
+            if patient_search.exists(timeout=0.5):
+                try:
+                    win_text = patient_search.window_text()
+                    if "patient" in win_text.lower() and "search" in win_text.lower():
+                        log_print(f"Found Patient Search window (method 2): '{win_text}'")
+                        return app, patient_search
+                except:
+                    pass
+        except Exception as e:
+            pass  # Continue trying
+        
+        # Method 3: Search all child windows by class first
+        try:
+            child_windows = main_window.children(control_type="Window")
+            for child in child_windows:
+                try:
+                    child_text = child.window_text()
+                    child_class = child.element_info.class_name
+                    if ("patient" in child_text.lower() and "search" in child_text.lower()) and "ThunderRT6FormDC" in child_class:
+                        log_print(f"Found Patient Search window (method 3): '{child_text}'")
+                        return app, child
+                except:
+                    continue
+        except Exception as e:
+            pass  # Continue trying
+        
+        # Method 4: Try without class name requirement (more lenient)
+        try:
+            child_windows = main_window.children(control_type="Window")
+            for child in child_windows:
+                try:
+                    child_text = child.window_text()
+                    if "patient" in child_text.lower() and "search" in child_text.lower():
+                        log_print(f"Found Patient Search window (method 4, lenient): '{child_text}'")
+                        return app, child
+                except:
+                    continue
+        except Exception as e:
+            pass  # Continue trying
+        
+        time.sleep(0.5)
+
+    log_print(f"Patient Search window not found after waiting {max_wait} seconds")
+    log_print("Attempted multiple detection methods but window was not found")
+    
+    # Debug: List all child windows to help diagnose
+    try:
+        log_print("Debug: Listing all child windows...")
+        child_windows = main_window.children(control_type="Window")
+        for idx, child in enumerate(child_windows):
+            try:
+                child_text = child.window_text()
+                child_class = child.element_info.class_name
+                log_print(f"  Window {idx+1}: Title='{child_text}', Class='{child_class}'")
+            except:
+                log_print(f"  Window {idx+1}: (could not read properties)")
     except Exception as e:
-        log_print(f"Error finding Patient Search window: {str(e)}")
-
+        log_print(f"Debug: Could not list child windows: {e}")
+    
     return None, None
 
 
-def click_dob_radio_button():
+def click_dob_radio_button(is_first=True):
     """
     Click on the DOB radio button in the Patient Search window.
 
@@ -201,6 +516,9 @@ def click_dob_radio_button():
         - ControlType: RadioButton
         - ClassName: "ThunderRT6OptionButton"
         - AutomationId: "12"
+
+    Args:
+        is_first: If True, search from main window; if False, search from desktop first, then fallback to main window
 
     Returns:
         True if successful, False otherwise
@@ -237,7 +555,7 @@ def click_dob_radio_button():
         return False
 
 
-def click_last_name_radio_button():
+def click_last_name_radio_button(is_first=True):
     """
     Click on the Last Name radio button in the Patient Search window.
 
@@ -246,6 +564,9 @@ def click_last_name_radio_button():
         - ControlType: RadioButton
         - ClassName: "ThunderRT6OptionButton"
         - AutomationId: "19"
+
+    Args:
+        is_first: If True, search from main window; if False, search from desktop first, then fallback to main window
 
     Returns:
         True if successful, False otherwise
@@ -282,7 +603,7 @@ def click_last_name_radio_button():
         return False
 
 
-def type_last_name_in_textbox(last_name):
+def type_last_name_in_textbox(last_name, is_first=True):
     """
     Type last name into the textbox in Patient Search window.
 
@@ -293,6 +614,7 @@ def type_last_name_in_textbox(last_name):
 
     Args:
         last_name: The last name to type
+        is_first: If True, search from main window; if False, search from desktop first, then fallback to main window
 
     Returns:
         True if successful, False otherwise
@@ -340,7 +662,7 @@ def type_last_name_in_textbox(last_name):
         return False
 
 
-def type_dob_in_textbox(dob_string):
+def type_dob_in_textbox(dob_string, is_first=True):
     """
     Type DOB into the date textbox in Patient Search window.
 
@@ -353,6 +675,7 @@ def type_dob_in_textbox(dob_string):
 
     Args:
         dob_string: DOB in MMddyyyy format (e.g., "01011980")
+        is_first: If True, search from main window; if False, search from desktop first, then fallback to main window
 
     Returns:
         True if successful, False otherwise
@@ -401,7 +724,7 @@ def type_dob_in_textbox(dob_string):
         return False
 
 
-def click_search_button():
+def click_search_button(is_first=True):
     """
     Click the search button next to the DOB textbox in Patient Search window.
 
@@ -410,6 +733,9 @@ def click_search_button():
         - ControlType: Button
         - ClassName: "ThunderRT6CommandButton"
         - AutomationId: "13"
+
+    Args:
+        is_first: If True, search from main window; if False, search from desktop first, then fallback to main window
 
     Returns:
         True if successful, False otherwise
@@ -489,7 +815,7 @@ def open_patient_search(window):
     return False
 
 
-def search_patient_by_dob_and_last_name(window, dob_string, last_name):
+def search_patient_by_dob_and_last_name(window, dob_string, last_name, is_first):
     """
     Complete workflow to search for a patient by DOB and Last Name.
 
@@ -511,52 +837,83 @@ def search_patient_by_dob_and_last_name(window, dob_string, last_name):
         True if all steps successful, False otherwise
     """
     log_print(f"\n=== Searching Patient by DOB: {dob_string} and Last Name: {last_name} ===")
-
-    # Step 1: Open Patient Search
-    if not open_patient_search(window):
-        log_print("Failed to open Patient Search")
-        return False
-    log_print("Patient Search opened successfully!")
+    if is_first:
+        # Step 1: Open Patient Search
+        if not open_patient_search(window):
+            log_print("Failed to open Patient Search")
+            return False
+        log_print("Patient Search opened successfully!")
+    else:
+        # Step 1: click Patient Search button
+        if not click_patient_search_button():
+            log_print("Failed to open Patient Search button")
+            return False
+        log_print("Patient Search clicked successfully!")
+        
+        # Wait for Patient Search window to appear
+        log_print("Waiting for Patient Search window to appear...")
+        time.sleep(3)  # Wait longer for window to start appearing after button click
+        
+        # Get fresh main window connection to ensure we have latest state
+        app, main_window = get_eivf_main_window()
+        if main_window:
+            log_print("Got fresh main window connection")
+        
+        # Try to find the window with longer wait time
+        if not find_patient_search_window(max_wait=15):
+            log_print("ERROR: Patient Search window did not appear after clicking button")
+            # Try one more time with fresh connection and longer wait
+            log_print("Retrying with fresh connection...")
+            time.sleep(2)
+            app, main_window = get_eivf_main_window()
+            if main_window:
+                log_print("Got fresh main window connection (retry)")
+            if not find_patient_search_window(max_wait=10):
+                log_print("ERROR: Patient Search window still not found after retry")
+                return False
+        log_print("Patient Search window detected!")
 
     # Step 2: Click DOB radio button
-    if not click_dob_radio_button():
+    if not click_dob_radio_button(is_first=is_first):
         log_print("Failed to click DOB radio button")
         return False
     log_print("DOB radio button clicked!")
 
     # Step 3: Type DOB
-    if not type_dob_in_textbox(dob_string):
+    if not type_dob_in_textbox(dob_string, is_first=is_first):
         log_print("Failed to type DOB")
         return False
     log_print(f"DOB '{dob_string}' entered successfully!")
 
     # Step 4: Click Search button (first search by DOB)
-    if not click_search_button():
+    if not click_search_button(is_first=is_first):
         log_print("Failed to click search button")
         return False
     log_print("Search button clicked (DOB search)!")
     time.sleep(1)  # Wait for results
 
     # Step 5: Click Last Name radio button
-    if not click_last_name_radio_button():
+    if not click_last_name_radio_button(is_first=is_first):
         log_print("Failed to click Last Name radio button")
         return False
     log_print("Last Name radio button clicked!")
 
     # Step 6: Type Last Name
-    if not type_last_name_in_textbox(last_name):
+    if not type_last_name_in_textbox(last_name, is_first=is_first):
         log_print("Failed to type Last Name")
         return False
     log_print(f"Last Name '{last_name}' entered successfully!")
 
-    # Step 7: Click Search button (search with DOB + Last Name)
     log_print("=== Patient DOB + Last Name search completed successfully ===")
     return True
 
 
-def click_select_button():
+def click_select_button(is_first=True):
     """
     Click the 'Select' button in the Patient Search window.
+
+    Args:
+        is_first: If True, search from main window; if False, search from desktop first, then fallback to main window
 
     Returns:
         True if successful, False otherwise
@@ -671,456 +1028,4 @@ def click_alert_ok_button():
         log_print(f"Error handling Alert dialog: {str(e)}")
         return False
 
-
-def write_note(note_title, note_text):
-    """
-    Enter note content and title in the Notes window.
-
-    IMPORTANT: When Notes window opens, cursor is ALREADY in the note content area.
-    So we type NOTE FIRST, then find the title field and enter title.
-
-    Args:
-        note_title: The title text to enter in the Title field
-        note_text: The note content to write in the text area
-
-    Returns:
-        True if successful, False otherwise
-    """
-    log_print(f"Writing note - Title: '{note_title}', Content: '{note_text}'")
-
-    try:
-        app, main_window = get_eivf_main_window()
-        if not main_window:
-            log_print("Could not find main window")
-            return False
-
-        title_entered = False
-        note_entered = False
-
-        # ============ STEP 1: Enter Note Content FIRST ============
-        log_print("Step 1: Entering note content...")
-
-        time.sleep(1)  # Wait for window to be fully ready
-
-        # First, press Escape to close any Templates panel that might be open
-        log_print("Pressing Escape to close Templates panel if open...")
-        send_keys("{ESC}")
-        time.sleep(0.5)
-
-        # Now find and click on the note content area
-        # Search for "eIVF Note Screen" (the IE control for note content)
-        desktop = get_desktop()
-
-        note_area = None
-        for win in desktop.windows():
-            if note_area:
-                break
-            try:
-                for desc in win.descendants():
-                    try:
-                        name = getattr(desc.element_info, "name", "") or ""
-                        cls = getattr(desc.element_info, "class_name", "") or ""
-
-                        if name == "eIVF Note Screen" or (
-                                cls == "Internet Explorer_Server" and "Note" in str(win.window_text())):
-                            rect = desc.rectangle()
-                            if rect.right - rect.left > 300:  # Make sure it's the large one
-                                log_print(
-                                    f"Found note area: name='{name}' rect=({rect.left},{rect.top},{rect.right},{rect.bottom})")
-                                note_area = (rect.left + 100, rect.top + 100)  # Click inside
-                                break
-                    except:
-                        continue
-            except:
-                continue
-
-        if note_area:
-            log_print(f"Clicking note area at {note_area}")
-            mouse.click(coords=note_area)
-            time.sleep(0.5)
-
-        # Type the note content
-        try:
-            send_keys(note_text, with_spaces=True)
-            log_print(f"Note content typed: '{note_text}'")
-            note_entered = True
-        except Exception as e:
-            log_print(f"Typing failed: {e}")
-
-        # ============ STEP 2: Enter Title ============
-        log_print("Step 2: Entering note title...")
-
-        # Find the title field by class name: WindowsForms10.EDIT.app.0.141b42a_r7_ad1
-        # or by automation_id: txtTitleNote
-        try:
-            desktop = get_desktop()
-
-            for win in desktop.windows():
-                if title_entered:
-                    break
-                try:
-                    for desc in win.descendants():
-                        try:
-                            cls = getattr(desc.element_info, "class_name", "") or ""
-                            auto_id = getattr(desc.element_info, "automation_id", "") or ""
-
-                            # Look for Windows Forms Edit control (title field)
-                            if "WindowsForms" in cls and "EDIT" in cls:
-                                rect = desc.rectangle()
-                                area = (rect.right - rect.left) * (rect.bottom - rect.top)
-
-                                # Title field is small (area < 50000)
-                                if 500 < area < 50000:
-                                    log_print(f"Found title field: class='{cls}' auto_id='{auto_id}' area={area}")
-
-                                    desc.click_input()
-                                    time.sleep(0.2)
-
-                                    # Select all and type new title
-                                    desc.type_keys("^a", with_spaces=True)
-                                    time.sleep(0.1)
-                                    desc.type_keys(note_title, with_spaces=True)
-                                    log_print(f"Title entered: '{note_title}'")
-                                    title_entered = True
-                                    break
-                        except:
-                            continue
-                except:
-                    continue
-        except Exception as e:
-            log_print(f"Error entering title: {e}")
-
-        # Return result
-        if title_entered and note_entered:
-            log_print("SUCCESS: Both note content and title entered!")
-            return True
-        elif note_entered:
-            log_print("SUCCESS: Note content entered (title may have failed)")
-            return True
-        else:
-            log_print("FAILED: Could not enter note content")
-            return False
-
-    except Exception as e:
-        log_print(f"Error writing note: {str(e)}")
-        return False
-
-
-def click_save_button():
-    """
-    Click the 'Save' button in the Notes window.
-    The Notes window has buttons at bottom: Print Preview, Print, Save, Close
-
-    Returns:
-        True if successful, False otherwise
-    """
-    log_print("Clicking Save button in Notes window...")
-
-    try:
-        app, main_window = get_eivf_main_window()
-
-        if not main_window:
-            log_print("Could not find main window")
-            return False
-
-        # Find Windows Forms Save button
-        # Class: "WindowsForms10.BUTTON.app.0.141b42a_r7_ad1", Name: "Save"
-        desktop = get_desktop()
-
-        # Search across all windows for Windows Forms Save button
-        log_print("Searching for Windows Forms Save button...")
-        for win in desktop.windows():
-            try:
-                for desc in win.descendants():
-                    try:
-                        cls = getattr(desc.element_info, "class_name", "") or ""
-                        name = getattr(desc.element_info, "name", "") or ""
-
-                        # Look for Windows Forms BUTTON with name "Save"
-                        if "WindowsForms" in cls and "BUTTON" in cls.upper() and name == "Save":
-                            rect = desc.rectangle()
-                            log_print(
-                                f"Found Windows Forms Save button: class='{cls}' rect=({rect.left},{rect.top},{rect.right},{rect.bottom})")
-
-                            # Click using mouse
-                            center_x = (rect.left + rect.right) // 2
-                            center_y = (rect.top + rect.bottom) // 2
-                            log_print(f"Clicking Save button at ({center_x}, {center_y})")
-
-                            mouse.click(coords=(center_x, center_y))
-                            log_print("Save button clicked successfully!")
-                            time.sleep(1)
-                            return True
-                    except:
-                        continue
-            except:
-                continue
-
-        log_print("Save button not found")
-        return False
-
-    except Exception as e:
-        log_print(f"Error clicking Save button: {str(e)}")
-        return False
-
-
-def click_new_button():
-    """
-    Click the 'New' button in the patient toolbar (Quick Summary window).
-
-    New button properties:
-        - Name: "New"
-        - ControlType: Button
-        - ClassName: "ThunderRT6CommandButton"
-        - AutomationId: "23"
-        - Located in: Quick Summary window > Frame3 group
-
-    Returns True if clicked, False otherwise.
-    """
-    log_print("Clicking New button...")
-
-    try:
-        app, main_window = get_eivf_main_window()
-        if not main_window:
-            log_print("Could not find main eIVF window")
-            return False
-
-        # Try using AutomationId first (most reliable)
-        try:
-            new_btn = main_window.child_window(
-                auto_id="23",
-                control_type="Button",
-                class_name="ThunderRT6CommandButton"
-            )
-            if new_btn.exists(timeout=3):
-                new_btn.click_input()
-                log_print("New button clicked (using AutomationId 23)")
-                time.sleep(0.5)
-                return True
-        except Exception as e:
-            log_print(f"AutomationId lookup failed: {e}")
-
-        # Fallback: Try by title
-        try:
-            new_btn = main_window.child_window(
-                title="New",
-                control_type="Button",
-                class_name="ThunderRT6CommandButton"
-            )
-            if new_btn.exists(timeout=2):
-                new_btn.click_input()
-                log_print("New button clicked (using title)")
-                time.sleep(0.5)
-                return True
-        except Exception:
-            pass
-
-        log_print("New button not found")
-        return False
-
-    except Exception as e:
-        log_print(f"Error in click_new_button: {e}")
-        return False
-
-
-def safe_text(elem):
-    try:
-        return (elem.window_text() or "").strip()
-    except Exception:
-        return ""
-
-
-def get_notes_window_patient_details():
-    """
-    Extract patient details from the Notes window header.
-    The patient header is a Windows Forms Panel control (Panel1) with class WindowsForms10.*
-    Returns dict with first_name, last_name, dob, patient_id (where found) or None.
-    """
-    log_print("get_notes_window_patient_details: start (v4 - WinForms search)")
-
-    try:
-        app, main_window = get_eivf_main_window()
-        if not main_window:
-            log_print("main window not found")
-            return None
-
-        # helper regexes
-        DOB_RE_LOCAL = re.compile(r'\bDOB[:\s]*(\d{1,2}/\d{1,2}/\d{4})\b', re.IGNORECASE)
-        DATE_RE_LOCAL = re.compile(r'(\d{1,2}/\d{1,2}/\d{4})')
-        ID_RE_LOCAL = re.compile(r'\((\d{2,})\)')
-        URL_LIKE = re.compile(r'https?://|www\.|\.htm|\.html', re.IGNORECASE)
-
-        candidates = []
-
-        # Step 1: Search for Windows Forms lblTitle control
-        # The patient header is:
-        #   - ControlType: Text
-        #   - ClassName: WindowsForms10.STATIC.app.0.141b42a_r7_ad1
-        #   - AutomationId: lblTitle
-        #   - Name property contains the patient info
-        log_print("Step 1: Searching for Windows Forms lblTitle control...")
-        try:
-            # Search desktop for the specific lblTitle control
-            desktop = get_desktop()
-            all_windows = desktop.windows()
-
-            for win in all_windows:
-                try:
-                    # Look for WindowsForms Text controls with lblTitle
-                    for desc in win.descendants():
-                        try:
-                            cls = getattr(desc.element_info, "class_name", "") or ""
-                            auto_id = getattr(desc.element_info, "automation_id", "") or ""
-                            ctrl_type = getattr(desc.element_info, "control_type", "") or ""
-
-                            # Check for the specific lblTitle control
-                            if auto_id == "lblTitle" or ("WindowsForms" in cls and "STATIC" in cls):
-                                name = getattr(desc.element_info, "name", "") or ""
-                                txt = safe_text(desc)
-
-                                log_print(f"Found lblTitle: class='{cls}' auto_id='{auto_id}' ctrl='{ctrl_type}'")
-                                log_print(f"  Name property: '{name[:150] if name else 'empty'}'")
-
-                                # The patient info is in the Name property
-                                if name and ("DOB" in name or "Quick Notes" in name):
-                                    log_print(f"  --> PATIENT INFO FOUND in Name property!")
-                                    candidates.append(name)
-                                elif txt and ("DOB" in txt or "Quick Notes" in txt):
-                                    log_print(f"  --> PATIENT INFO FOUND in text!")
-                                    candidates.append(txt)
-                        except:
-                            continue
-                except:
-                    continue
-        except Exception as e:
-            log_print(f"Error searching for lblTitle control: {e}")
-
-        # Check if we found patient info
-        if candidates:
-            log_print(f"Step 1 SUCCESS: Found {len(candidates)} candidate(s) with patient info")
-
-        # No candidates found
-        if not candidates:
-            log_print("No patient info candidates found in Notes window")
-            return None
-
-        # Choose the best candidate (prefer ones with DOB pattern)
-        log_print(f"Found {len(candidates)} candidate(s)")
-        chosen = None
-        for txt in candidates:
-            if URL_LIKE.search(txt):
-                continue
-            if DOB_RE_LOCAL.search(txt):
-                chosen = txt
-                log_print(f"Chosen candidate with DOB: '{txt[:150]}'")
-                break
-
-        if not chosen and candidates:
-            chosen = candidates[0]
-            log_print(f"Using first candidate: '{chosen[:150]}'")
-
-        if not chosen:
-            log_print("No valid candidate found")
-            return None
-
-        # Parse the chosen text
-        patient = {}
-
-        # Extract DOB
-        dob_match = DOB_RE_LOCAL.search(chosen)
-        if dob_match:
-            patient['dob'] = dob_match.group(1)
-            log_print(f"Extracted DOB: {patient['dob']}")
-
-        # Extract Patient ID
-        id_match = ID_RE_LOCAL.search(chosen)
-        if id_match:
-            patient['patient_id'] = id_match.group(1)
-            log_print(f"Extracted Patient ID: {patient['patient_id']}")
-
-        # Extract Name
-        # Try "Quick Notes: FirstName MiddleName LastName (ID)" pattern
-        name_pattern = re.search(r'Quick\s*(Notes|Summary)[:\s]*([A-Za-z0-9\.\'\- ]+)\s*\(', chosen, re.IGNORECASE)
-        if name_pattern:
-            full_name = name_pattern.group(2).strip()
-            log_print(f"Extracted full name: '{full_name}'")
-
-            name_parts = full_name.split()
-            if len(name_parts) >= 2:
-                patient['first_name'] = name_parts[0]
-                patient['last_name'] = name_parts[-1].rstrip('.')
-                log_print(f"Parsed: first='{patient['first_name']}', last='{patient['last_name']}'")
-            elif len(name_parts) == 1:
-                patient['first_name'] = name_parts[0]
-                patient['last_name'] = ''
-
-        if patient.get('dob') or patient.get('first_name'):
-            log_print(f"Final parsed patient: {patient}")
-            return patient
-
-        log_print("Could not parse patient details from candidate text")
-        return None
-
-    except Exception as e:
-        log_print(f"get_notes_window_patient_details: unexpected error: {e}")
-        import traceback
-        log_print(traceback.format_exc())
-        return None
-
-
-def verify_patient_explorer_match(expected_first_name, expected_last_name, expected_dob):
-    """
-    Verify that the patient shown in Notes window matches the expected patient details.
-
-    This is a MANDATORY verification step before writing notes.
-
-    Args:
-        expected_first_name: Expected first name (string)
-        expected_last_name: Expected last name (string)
-        expected_dob: Expected DOB as MMddyyyy or MM/dd/yyyy
-
-    Returns:
-        True if patient matches, False otherwise
-    """
-    log_print(f"Verifying Notes window shows: {expected_first_name} {expected_last_name}, DOB: {expected_dob}")
-
-    try:
-        # Get patient details from the Notes window
-        patient_details = get_notes_window_patient_details()
-        if not patient_details:
-            log_print("verify_patient_explorer_match: could not retrieve patient details from Notes window")
-            log_print("VERIFICATION FAILED - cannot proceed without verifying patient")
-            return False
-
-        # Normalize DOB formats to compare
-        expected_formats = [expected_dob]
-        if isinstance(expected_dob, str) and len(expected_dob) == 8 and expected_dob.isdigit():
-            mm, dd, yyyy = expected_dob[:2], expected_dob[2:4], expected_dob[4:]
-            expected_formats.extend([f"{mm}/{dd}/{yyyy}", f"{mm}-{dd}-{yyyy}", f"{int(mm)}/{int(dd)}/{yyyy}"])
-
-        # Get actuals
-        actual_first = patient_details.get('first_name', '').strip().lower()
-        actual_last = patient_details.get('last_name', '').strip().lower()
-        actual_dob = patient_details.get('dob', '').strip()
-
-        first_ok = (actual_first == expected_first_name.strip().lower())
-        last_ok = (actual_last == expected_last_name.strip().lower())
-        dob_ok = any(actual_dob == fmt or actual_dob.lower() == fmt.lower() for fmt in expected_formats)
-
-        log_print(
-            f"verify_patient_explorer_match: header_text comparison -> first_ok={first_ok}, last_ok={last_ok}, dob_ok={dob_ok}")
-
-        all_match = first_ok and last_ok and dob_ok
-        if all_match:
-            log_print("verify_patient_explorer_match: PASSED")
-        else:
-            log_print("verify_patient_explorer_match: FAILED")
-
-        return all_match
-
-    except Exception as e:
-        log_print(f"verify_patient_explorer_match: error: {e}")
-        import traceback
-        log_print(traceback.format_exc())
-        return False
 
