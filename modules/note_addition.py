@@ -451,4 +451,3 @@ def verify_patient_explorer_match(expected_first_name, expected_last_name, expec
         import traceback
         log_print(traceback.format_exc())
         return False
-
