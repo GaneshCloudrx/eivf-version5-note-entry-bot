@@ -207,16 +207,59 @@ def click_save_button():
 def click_new_button():
     """
     Click the 'New' button in the patient toolbar.
+    Only clicks New button if checkboxes "Results" (auto_id=31) and "Schedule" (auto_id=32) exist.
+    If checkboxes don't exist, returns False to skip to next note.
 
     Returns True if clicked, False otherwise.
     """
-    log_print("Clicking New button...")
+    log_print("Checking for required checkboxes before clicking New button...")
 
     try:
         app, main_window = get_eivf_main_window()
         if not main_window:
             log_print("Could not find main eIVF window")
             return False
+
+        # Check for Results checkbox (automation ID 31)
+        log_print("Checking for Results checkbox (automation ID 31)...")
+
+        try:
+            results_checkbox = main_window.child_window(
+                auto_id="31",
+                control_type="CheckBox"
+            )
+            if results_checkbox.exists(timeout=2):
+                log_print("✔ Results checkbox found (auto_id=31)")
+            else:
+                log_print("❌ Results checkbox (auto_id=31) not found")
+                log_print("Required checkboxes missing - skipping to next note")
+                return False
+        except Exception as e:
+            log_print(f"❌ Error finding Results checkbox: {e}")
+            log_print("Required checkboxes missing - skipping to next note")
+            return False
+
+        # Check for Schedule checkbox (automation ID 32)
+        log_print("Checking for Schedule checkbox (automation ID 32)...")
+
+        try:
+            schedule_checkbox = main_window.child_window(
+                auto_id="32",
+                control_type="CheckBox"
+            )
+            if schedule_checkbox.exists(timeout=2):
+                log_print("✔ Schedule checkbox found (auto_id=32)")
+            else:
+                log_print("Schedule checkbox (auto_id=32) not found")
+                log_print("Required checkboxes missing - skipping to next note")
+                return False
+        except Exception as e:
+            log_print(f"Error finding Schedule checkbox: {e}")
+            log_print("Required checkboxes missing - skipping to next note")
+            return False
+
+        # Both checkboxes exist, proceed to click New button
+        log_print("Both required checkboxes found. Clicking New button...")
 
         # Try direct lookup first
         try:
@@ -366,6 +409,22 @@ def get_notes_window_patient_details():
             patient['patient_id'] = id_match.group(1)
             log_print(f"Extracted Patient ID: {patient['patient_id']}")
 
+        # Extract Phone Number
+        # Try patterns like "(000) 000-0000" or "B: (000) 000-0000" or "Phone Number (B:): (000) 000-0000"
+        phone_patterns = [
+            re.compile(r'Phone\s*Number\s*\(B:\)[:\s]*\(?(\d{3})\)?\s*-?\s*(\d{3})\s*-?\s*(\d{4})', re.IGNORECASE),
+            re.compile(r'B:[:\s]*\(?(\d{3})\)?\s*-?\s*(\d{3})\s*-?\s*(\d{4})', re.IGNORECASE),
+            re.compile(r'\((\d{3})\)\s*-?\s*(\d{3})\s*-?\s*(\d{4})', re.IGNORECASE),
+        ]
+        for phone_pattern in phone_patterns:
+            phone_match = phone_pattern.search(chosen)
+            if phone_match:
+                # Format as (XXX) XXX-XXXX
+                phone_number = f"({phone_match.group(1)}) {phone_match.group(2)}-{phone_match.group(3)}"
+                patient['phone_number'] = phone_number
+                log_print(f"Extracted Phone Number: {patient['phone_number']}")
+                break
+        
         # Extract Name
         # Try "Quick Notes: FirstName MiddleName LastName (ID)" pattern
         name_pattern = re.search(r'Quick\s*(Notes|Summary)[:\s]*([A-Za-z0-9\.\'\- ]+)\s*\(', chosen, re.IGNORECASE)
@@ -396,7 +455,75 @@ def get_notes_window_patient_details():
         return None
 
 
-def verify_patient_explorer_match(expected_first_name, expected_last_name, expected_dob):
+def close_notes_window():
+    """
+    Close the Notes window by finding and clicking the Close button.
+    Uses the same approach as click_save_button - searches for Windows Forms Close button.
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    log_print("Attempting to close Notes window...")
+    
+    try:
+        app, main_window = get_eivf_main_window()
+        if not main_window:
+            log_print("Could not find main window to close Notes")
+            return False
+        
+        # Find Windows Forms Close button (same approach as Save button)
+        # Class: "WindowsForms10.BUTTON.app.0.141b42a_r7_ad1", Name: "Close"
+        desktop = get_desktop()
+        
+        log_print("Searching for Windows Forms Close button...")
+        for win in desktop.windows():
+            try:
+                for desc in win.descendants():
+                    try:
+                        cls = getattr(desc.element_info, "class_name", "") or ""
+                        name = getattr(desc.element_info, "name", "") or ""
+                        
+                        # Look for Windows Forms BUTTON with name "Close"
+                        if "WindowsForms" in cls and "BUTTON" in cls.upper() and name == "Close":
+                            rect = desc.rectangle()
+                            log_print(
+                                f"Found Windows Forms Close button: class='{cls}' rect=({rect.left},{rect.top},{rect.right},{rect.bottom})")
+                            
+                            # Click using mouse
+                            center_x = (rect.left + rect.right) // 2
+                            center_y = (rect.top + rect.bottom) // 2
+                            log_print(f"Clicking Close button at ({center_x}, {center_y})")
+                            
+                            mouse.click(coords=(center_x, center_y))
+                            log_print("Close button clicked successfully!")
+                            time.sleep(1)
+                            return True
+                    except:
+                        continue
+            except:
+                continue
+        
+        log_print("Close button not found - trying Escape key as fallback...")
+        # Fallback: Try Escape key
+        try:
+            main_window.set_focus()
+            time.sleep(0.3)
+            send_keys("{ESC}", with_spaces=True)
+            time.sleep(0.5)
+            log_print("Notes window closed using Escape (fallback)")
+            return True
+        except Exception as e:
+            log_print(f"Escape key also failed: {e}")
+        
+        log_print("Could not close Notes window")
+        return False
+        
+    except Exception as e:
+        log_print(f"Error closing Notes window: {e}")
+        return False
+
+
+def verify_patient_explorer_match(expected_first_name, expected_last_name, expected_phone_number):
     """
     Verify that the patient shown in Notes window matches the expected patient details.
 
@@ -405,12 +532,12 @@ def verify_patient_explorer_match(expected_first_name, expected_last_name, expec
     Args:
         expected_first_name: Expected first name (string)
         expected_last_name: Expected last name (string)
-        expected_dob: Expected DOB as MMddyyyy or MM/dd/yyyy
+        expected_phone_number: Expected phone number (string, can be in various formats)
 
     Returns:
         True if patient matches, False otherwise
     """
-    log_print(f"Verifying Notes window shows: {expected_first_name} {expected_last_name}, DOB: {expected_dob}")
+    log_print(f"Verifying Notes window shows: {expected_first_name} {expected_last_name}, Phone number: {expected_phone_number}")
 
     try:
         # Get patient details from the Notes window
@@ -420,29 +547,45 @@ def verify_patient_explorer_match(expected_first_name, expected_last_name, expec
             log_print("VERIFICATION FAILED - cannot proceed without verifying patient")
             return False
 
-        # Normalize DOB formats to compare
-        expected_formats = [expected_dob]
-        if isinstance(expected_dob, str) and len(expected_dob) == 8 and expected_dob.isdigit():
-            mm, dd, yyyy = expected_dob[:2], expected_dob[2:4], expected_dob[4:]
-            expected_formats.extend([f"{mm}/{dd}/{yyyy}", f"{mm}-{dd}-{yyyy}", f"{int(mm)}/{int(dd)}/{yyyy}"])
-
         # Get actuals
         actual_first = patient_details.get('first_name', '').strip().lower()
         actual_last = patient_details.get('last_name', '').strip().lower()
-        actual_dob = patient_details.get('dob', '').strip()
+        actual_phone = patient_details.get('phone_number', '').strip()
+
+        # Normalize phone numbers for comparison (remove spaces, dashes, parentheses)
+        def normalize_phone(phone):
+            if not phone:
+                return ""
+            # Remove all non-digit characters
+            return re.sub(r'\D', '', phone)
+        
+        expected_phone_normalized = normalize_phone(expected_phone_number)
+        actual_phone_normalized = normalize_phone(actual_phone)
 
         first_ok = (actual_first == expected_first_name.strip().lower())
         last_ok = (actual_last == expected_last_name.strip().lower())
-        dob_ok = any(actual_dob == fmt or actual_dob.lower() == fmt.lower() for fmt in expected_formats)
+        phone_ok = (expected_phone_normalized == actual_phone_normalized) if expected_phone_normalized else True
 
         log_print(
-            f"verify_patient_explorer_match: header_text comparison -> first_ok={first_ok}, last_ok={last_ok}, dob_ok={dob_ok}")
+            f"verify_patient_explorer_match: comparison -> first_ok={first_ok}, last_ok={last_ok}, phone_ok={phone_ok}")
+        log_print(f"  Expected phone: '{expected_phone_number}' (normalized: '{expected_phone_normalized}')")
+        log_print(f"  Actual phone: '{actual_phone}' (normalized: '{actual_phone_normalized}')")
 
-        all_match = first_ok and last_ok and dob_ok
+        all_match = first_ok and last_ok and phone_ok
         if all_match:
             log_print("verify_patient_explorer_match: PASSED")
         else:
             log_print("verify_patient_explorer_match: FAILED")
+            if not first_ok:
+                log_print(f"  First name mismatch: expected '{expected_first_name}', got '{actual_first}'")
+            if not last_ok:
+                log_print(f"  Last name mismatch: expected '{expected_last_name}', got '{actual_last}'")
+            if not phone_ok:
+                log_print(f"  Phone number mismatch: expected '{expected_phone_number}', got '{actual_phone}'")
+            
+            # Close Notes window when verification fails
+            log_print("Closing Notes window due to verification failure...")
+            close_notes_window()
 
         return all_match
 
@@ -450,4 +593,7 @@ def verify_patient_explorer_match(expected_first_name, expected_last_name, expec
         log_print(f"verify_patient_explorer_match: error: {e}")
         import traceback
         log_print(traceback.format_exc())
+        # Close Notes window on error
+        close_notes_window()
         return False
+
