@@ -451,457 +451,205 @@ def get_patient_search_window(max_wait=5):
     return None, None
 
 
-def click_dob_radio_button(is_first=True):
+
+def search_patient_by_phone_number_and_first_name_coords(phone_number, first_name, is_first=True):
     """
-    Click on the DOB radio button in the Patient Search window.
-
-    DOB radio button properties:
-        - Name: "DOB"
-        - ControlType: RadioButton
-        - ClassName: "ThunderRT6OptionButton"
-        - AutomationId: "12"
-
+    Coordinate-based patient search by Phone Number and First Name.
+    Uses hardcoded coordinates instead of window detection.
+    
     Args:
-        is_first: If True, search from main window; if False, search from desktop first, then fallback to main window
-
+        phone_number: Phone number as string (e.g., "4155553333")
+        first_name: The patient's first name
+        is_first: If True, click Patient Explorer from sidebar first; if False, click Patient Search button first
+    
     Returns:
         True if successful, False otherwise
     """
-    log_print("Clicking DOB radio button...")
-
+    log_print(f"\n=== Searching Patient by Phone Number: {phone_number} and First Name: {first_name} (Coordinate-based) ===")
+    
+    # Coordinates for Patient Search window elements (same as test_coor.py)
+    coordinates = {
+        "phone_number": (836, 572),   # Phone number field coordinates
+        "first_name": (849, 438),      # First name field coordinates
+        "text_button": (851, 591),     # Text input box/button
+        "search_button": (986, 598),   # Search button
+        "row": (1028, 633),            # Result row to select
+        "select_button": (1191, 788)   # Select button
+    }
+    
     try:
-        # Get the Patient Search window
-        app, search_window = get_patient_search_window()
-
-        if not search_window:
-            log_print("Could not find Patient Search window")
-            return False
-
-        # Find the DOB radio button
-        dob_radio = search_window.child_window(
-            title="DOB",
-            control_type="RadioButton",
-            class_name="ThunderRT6OptionButton",
-            auto_id="12"
-        )
-
-        if dob_radio.exists(timeout=3):
-            dob_radio.click_input()
-            log_print("DOB radio button clicked successfully")
-            time.sleep(0.5)
-            return True
-        else:
-            log_print("DOB radio button not found")
-            return False
-
-    except Exception as e:
-        log_print(f"Error clicking DOB radio button: {str(e)}")
-        return False
-
-
-def click_last_name_radio_button(is_first=True):
-    """
-    Click on the Last Name radio button in the Patient Search window.
-
-    Last Name radio button properties:
-        - Name: "Last Name"
-        - ControlType: RadioButton
-        - ClassName: "ThunderRT6OptionButton"
-        - AutomationId: "19"
-
-    Args:
-        is_first: If True, search from main window; if False, search from desktop first, then fallback to main window
-
-    Returns:
-        True if successful, False otherwise
-    """
-    log_print("Clicking Last Name radio button...")
-
-    try:
-        # Get the Patient Search window
-        app, search_window = get_patient_search_window()
-
-        if not search_window:
-            log_print("Could not find Patient Search window")
-            return False
-
-        # Find the Last Name radio button
-        last_name_radio = search_window.child_window(
-            title="Last Name",
-            control_type="RadioButton",
-            class_name="ThunderRT6OptionButton",
-            auto_id="19"
-        )
-
-        if last_name_radio.exists(timeout=3):
-            last_name_radio.click_input()
-            log_print("Last Name radio button clicked successfully")
-            time.sleep(0.5)
-            return True
-        else:
-            log_print("Last Name radio button not found")
-            return False
-
-    except Exception as e:
-        log_print(f"Error clicking Last Name radio button: {str(e)}")
-        return False
-
-
-def type_last_name_in_textbox(last_name, is_first=True):
-    """
-    Type last name into the textbox in Patient Search window.
-
-    Last Name textbox properties:
-        - ControlType: Edit
-        - ClassName: "ThunderRT6TextBox"
-        - AutomationId: "14"
-
-    Args:
-        last_name: The last name to type
-        is_first: If True, search from main window; if False, search from desktop first, then fallback to main window
-
-    Returns:
-        True if successful, False otherwise
-    """
-    log_print(f"Typing Last Name: {last_name}")
-
-    try:
-        # Get the Patient Search window
-        app, search_window = get_patient_search_window()
-
-        if not search_window:
-            log_print("Could not find Patient Search window")
-            return False
-
-        # Find the Last Name textbox
-        last_name_textbox = search_window.child_window(
-            auto_id="14",
-            class_name="ThunderRT6TextBox",
-            control_type="Edit"
-        )
-
-        if not last_name_textbox.exists(timeout=3):
-            log_print("Last Name textbox not found")
-            return False
-
-        # Click on the textbox to focus it
-        last_name_textbox.click_input()
-        time.sleep(0.3)
-
-        # Clear existing text (Ctrl+A to select all, then Delete)
-        last_name_textbox.type_keys("^a", with_spaces=True)
-        time.sleep(0.1)
-        last_name_textbox.type_keys("{DELETE}", with_spaces=True)
-        time.sleep(0.2)
-
-        # Type the last name
-        last_name_textbox.type_keys(last_name, with_spaces=True)
-
-        log_print(f"Last Name '{last_name}' typed successfully")
-        time.sleep(0.3)
-        return True
-
-    except Exception as e:
-        log_print(f"Error typing Last Name: {str(e)}")
-        return False
-
-
-def type_dob_in_textbox(dob_string, is_first=True):
-    """
-    Type DOB into the date textbox in Patient Search window.
-
-    The DOB should be in MMddyyyy format (e.g., "01011980" for January 1, 1980).
-    Characters are typed one by one for reliability with this OLE control.
-
-    DOB textbox properties:
-        - ControlType: Pane
-        - ClassName: "AfxOleControl42"
-
-    Args:
-        dob_string: DOB in MMddyyyy format (e.g., "01011980")
-        is_first: If True, search from main window; if False, search from desktop first, then fallback to main window
-
-    Returns:
-        True if successful, False otherwise
-    """
-    log_print(f"Typing DOB: {dob_string}")
-
-    try:
-        # Get the Patient Search window
-        app, search_window = get_patient_search_window()
-
-        if not search_window:
-            log_print("Could not find Patient Search window")
-            return False
-
-        # Find the DOB textbox (AfxOleControl42)
-        dob_textbox = search_window.child_window(
-            class_name="AfxOleControl42",
-            control_type="Pane"
-        )
-
-        if not dob_textbox.exists(timeout=3):
-            log_print("DOB textbox not found")
-            return False
-
-        # Click on the textbox to focus it
-        dob_textbox.click_input()
-        time.sleep(0.3)
-
-        # Clear existing text (Ctrl+A to select all, then Delete)
-        dob_textbox.type_keys("^a", with_spaces=True)
-        time.sleep(0.1)
-        dob_textbox.type_keys("{DELETE}", with_spaces=True)
-        time.sleep(0.2)
-
-        # Type DOB one character at a time
-        for char in dob_string:
-            dob_textbox.type_keys(char, with_spaces=True)
-            time.sleep(0.05)  # Small delay between characters
-
-        log_print(f"DOB '{dob_string}' typed successfully")
-        time.sleep(0.3)
-        return True
-
-    except Exception as e:
-        log_print(f"Error typing DOB: {str(e)}")
-        return False
-
-
-def click_search_button(is_first=True):
-    """
-    Click the search button next to the DOB textbox in Patient Search window.
-
-    Search button properties:
-        - Name: "" (empty)
-        - ControlType: Button
-        - ClassName: "ThunderRT6CommandButton"
-        - AutomationId: "13"
-
-    Args:
-        is_first: If True, search from main window; if False, search from desktop first, then fallback to main window
-
-    Returns:
-        True if successful, False otherwise
-    """
-    log_print("Clicking search button...")
-
-    try:
-        # Get the Patient Search window
-        app, search_window = get_patient_search_window()
-
-        if not search_window:
-            log_print("Could not find Patient Search window")
-            return False
-
-        # Find the search button
-        search_button = search_window.child_window(
-            auto_id="13",
-            control_type="Button",
-            class_name="ThunderRT6CommandButton"
-        )
-
-        if search_button.exists(timeout=3):
-            search_button.click_input()
-            log_print("Search button clicked successfully")
-            time.sleep(1)  # Wait for search results
-            return True
-        else:
-            log_print("Search button not found")
-            return False
-
-    except Exception as e:
-        log_print(f"Error clicking search button: {str(e)}")
-        return False
-
-
-def open_patient_search(window):
-    """
-    Open patient search window from the sidebar.
-
-    Args:
-        window: The login window (may not be needed after login)
-
-    Returns:
-        True if patient search opened successfully, False otherwise
-    """
-    log_print("\n=== Opening Patient Search ===")
-
-    # Get the main eIVF window
-    app, main_window = get_eivf_main_window()
-
-    if not main_window:
-        log_print("Could not find main eIVF window")
-        return False
-
-    # Ensure window is focused and maximized
-    try:
-        main_window.set_focus()
-        main_window.maximize()
-        time.sleep(0.5)
-    except:
-        pass
-
-    # Click sidebar "Patient Search" button
-    if open_patient_search_from_sidebar(main_window):
-        if find_patient_search_window():
-            log_print("Patient search opened successfully via sidebar!")
-            return True
-        log_print("Sidebar clicked but patient search window not detected")
-
-    # Final check - maybe it opened but we didn't detect it properly
-    time.sleep(1)
-    if find_patient_search_window():
-        log_print("Patient search window detected")
-        return True
-
-    log_print("Failed to open patient search")
-    return False
-
-
-def search_patient_by_dob_and_last_name(window, dob_string, last_name, is_first):
-    """
-    Complete workflow to search for a patient by DOB and Last Name.
-
-    This function performs all steps in sequence:
-    1. Open Patient Search window
-    2. Click DOB radio button
-    3. Type DOB in textbox
-    4. Click Search button
-    5. Click Last Name radio button
-    6. Type Last Name in textbox
-    7. Click Search button again
-
-    Args:
-        window: The login window (may not be needed after login)
-        dob_string: DOB in MMddyyyy format (e.g., "01011980" for January 1, 1980)
-        last_name: The patient's last name
-
-    Returns:
-        True if all steps successful, False otherwise
-    """
-    log_print(f"\n=== Searching Patient by DOB: {dob_string} and Last Name: {last_name} ===")
-    if is_first:
-        # Step 1: Open Patient Search
-        if not open_patient_search(window):
-            log_print("Failed to open Patient Search")
-            return False
-        log_print("Patient Search opened successfully!")
-    else:
-        # Step 1: click Patient Search button
-        if not click_patient_search_button():
-            log_print("Failed to open Patient Search button")
-            return False
-        log_print("Patient Search clicked successfully!")
-        
-        # Wait for Patient Search window to appear
-        log_print("Waiting for Patient Search window to appear...")
-        time.sleep(3)  # Wait longer for window to start appearing after button click
-        
-        # Get fresh main window connection to ensure we have latest state
+        # Get main eIVF window
         app, main_window = get_eivf_main_window()
-        if main_window:
-            log_print("Got fresh main window connection")
+        if not main_window:
+            log_print("Could not find eIVF window")
+            return False
         
-        # Try to find the window with longer wait time
-        if not find_patient_search_window(max_wait=15):
-            log_print("ERROR: Patient Search window did not appear after clicking button")
-            # Try one more time with fresh connection and longer wait
-            log_print("Retrying with fresh connection...")
-            time.sleep(2)
-            app, main_window = get_eivf_main_window()
-            if main_window:
-                log_print("Got fresh main window connection (retry)")
-            if not find_patient_search_window(max_wait=10):
-                log_print("ERROR: Patient Search window still not found after retry")
+        # Ensure window is active
+        try:
+            main_window.set_focus()
+        except Exception as e:
+            log_print(f"Could not set focus: {e}")
+        time.sleep(1)
+        
+        # Step 0: Open Patient Search - different for first time vs subsequent times
+        if is_first:
+            # First time: Click Patient Explorer from sidebar
+            log_print("First note: Clicking Patient Explorer from sidebar...")
+            if not open_patient_search_from_sidebar(main_window):
+                log_print("Failed to open Patient Explorer from sidebar")
                 return False
-        log_print("Patient Search window detected!")
-
-    # Step 2: Click DOB radio button
-    if not click_dob_radio_button(is_first=is_first):
-        log_print("Failed to click DOB radio button")
+            log_print("Patient Explorer opened from sidebar!")
+            time.sleep(2)  # Wait for Patient Explorer to open
+        else:
+            # Subsequent times: Click Patient Search button
+            log_print("Subsequent note: Clicking Patient Search button...")
+            if not click_patient_search_button():
+                log_print("Failed to click Patient Search button")
+                return False
+            log_print("Patient Search button clicked!")
+            time.sleep(2)  # Wait for Patient Search window to appear
+        
+        # Step 1: Select phone number field, click text button, enter phone number, then click search
+        log_print("Selecting phone number field...")
+        try:
+            main_window.click_input(coords=coordinates.get("phone_number"))
+            time.sleep(0.3)
+            log_print("✔ Phone number field selected")
+        except Exception as e:
+            log_print(f"Error selecting phone number field: {e}")
+            return False
+        
+        # Click text button/box
+        log_print("Clicking text button for phone number...")
+        try:
+            main_window.click_input(coords=coordinates.get("text_button"))
+            time.sleep(0.5)
+            # Clear any existing text - try multiple methods to handle spaces
+            main_window.click_input(coords=coordinates.get("text_button"))
+            time.sleep(0.2)
+            # Try Ctrl+A to select all, then Delete
+            send_keys("^a", with_spaces=True)  # Ctrl+A to select all
+            time.sleep(0.2)
+            send_keys("{DELETE}", with_spaces=True)  # Delete to clear
+            time.sleep(0.2)
+            # Fallback: double-click and multiple backspaces to ensure all text is cleared (handles spaces)
+            main_window.double_click_input(coords=coordinates.get("text_button"))
+            time.sleep(0.2)
+            # Press backspace multiple times to ensure all text including spaces is cleared
+            for _ in range(30):  # Clear up to 30 characters (handles spaces and long text)
+                send_keys("{BACKSPACE}", with_spaces=True)
+            time.sleep(0.2)
+            # Type phone number
+            send_keys(phone_number, with_spaces=True)
+            time.sleep(1)
+            log_print(f"Phone number '{phone_number}' entered in text box")
+        except Exception as e:
+            log_print(f"Error entering phone number: {e}")
+            return False
+        
+        # Click search button
+        log_print("Clicking search button (Phone Number search)...")
+        try:
+            main_window.click_input(coords=coordinates.get("search_button"))
+            time.sleep(1)
+        except Exception as e:
+            log_print(f"Error with search button: {e}")
+            return False
+        
+        # Step 2: Select First Name field, click text button, enter first name, then click search
+        log_print("Selecting first name field...")
+        try:
+            main_window.click_input(coords=coordinates.get("first_name"))
+            time.sleep(0.3)
+            log_print("First name field selected")
+        except Exception as e:
+            log_print(f"Error selecting first name field: {e}")
+            return False
+        
+        # Click text button/box
+        log_print("Clicking text button for first name...")
+        try:
+            main_window.click_input(coords=coordinates.get("text_button"))
+            time.sleep(0.5)
+            # Clear any existing text - use Ctrl+A to select all, then Delete
+            main_window.click_input(coords=coordinates.get("text_button"))
+            time.sleep(0.2)
+            send_keys("^a", with_spaces=True)  # Ctrl+A to select all
+            time.sleep(0.2)
+            send_keys("{DELETE}", with_spaces=True)  # Delete to clear
+            time.sleep(0.3)
+            # If Ctrl+A doesn't work, try double-click and multiple backspaces
+            main_window.double_click_input(coords=coordinates.get("text_button"))
+            time.sleep(0.2)
+            # Press backspace multiple times to ensure all text is cleared
+            for _ in range(20):  # Clear up to 20 characters
+                send_keys("{BACKSPACE}", with_spaces=True)
+            time.sleep(0.2)
+            # Type first name
+            send_keys(first_name, with_spaces=True)
+            time.sleep(1)
+            log_print(f"First name '{first_name}' entered in text box")
+        except Exception as e:
+            log_print(f"Error entering first name: {e}")
+            return False
+        
+        log_print("=== Patient Phone Number + First Name search completed successfully ===")
+        return True
+        
+    except Exception as e:
+        log_print(f"Error in coordinate-based patient search: {e}")
+        import traceback
+        traceback.print_exc()
         return False
-    log_print("DOB radio button clicked!")
-
-    # Step 3: Type DOB
-    if not type_dob_in_textbox(dob_string, is_first=is_first):
-        log_print("Failed to type DOB")
-        return False
-    log_print(f"DOB '{dob_string}' entered successfully!")
-
-    # Step 4: Click Search button (first search by DOB)
-    if not click_search_button(is_first=is_first):
-        log_print("Failed to click search button")
-        return False
-    log_print("Search button clicked (DOB search)!")
-    time.sleep(1)  # Wait for results
-
-    # Step 5: Click Last Name radio button
-    if not click_last_name_radio_button(is_first=is_first):
-        log_print("Failed to click Last Name radio button")
-        return False
-    log_print("Last Name radio button clicked!")
-
-    # Step 6: Type Last Name
-    if not type_last_name_in_textbox(last_name, is_first=is_first):
-        log_print("Failed to type Last Name")
-        return False
-    log_print(f"Last Name '{last_name}' entered successfully!")
-
-    log_print("=== Patient DOB + Last Name search completed successfully ===")
-    return True
 
 
-def click_select_button(is_first=True):
+
+def click_select_button():
     """
     Click the 'Select' button in the Patient Search window.
-
-    Args:
-        is_first: If True, search from main window; if False, search from desktop first, then fallback to main window
+    If select fails, returns False so the main flow can skip to next note.
 
     Returns:
-        True if successful, False otherwise
+        True if successful, False otherwise (will skip to next note)
     """
-    log_print("Clicking Select button...")
+    log_print("Clicking Select button (coordinate-based)...")
 
     try:
-        # Get the Patient Search window
-        app, search_window = get_patient_search_window()
-
-        if not search_window:
-            log_print("Could not find Patient Search window")
+        # Get main eIVF window
+        app, main_window = get_eivf_main_window()
+        if not main_window:
+            log_print("Could not find eIVF window")
             return False
 
-        # Try to find the Select button by title
-        select_button = search_window.child_window(
-            title="Select",
-            control_type="Button"
-        )
-
-        if select_button.exists(timeout=3):
-            select_button.click_input()
-            log_print("Select button clicked successfully")
+        # Coordinates for selecting row and clicking select button
+        coordinates = {
+            "row": (1028, 633),        # Result row to select
+            "select_button": (1191, 788) # Select button
+        }
+        
+        # Select the row first
+        log_print("Selecting result row...")
+        try:
+            main_window.click_input(coords=coordinates.get("row"))
+            time.sleep(0.5)
+        except Exception as e:
+            log_print(f"⚠️ Error selecting row: {e}")
+        
+        # Click select button
+        log_print("Clicking select button...")
+        try:
+            main_window.click_input(coords=coordinates.get("select_button"))
             time.sleep(1)
+            log_print("Select button clicked successfully")
             return True
-
-        # Try by class name if title didn't work
-        buttons = search_window.children(control_type="Button")
-        for btn in buttons:
-            try:
-                btn_text = btn.window_text()
-                if "select" in btn_text.lower():
-                    btn.click_input()
-                    log_print(f"Select button clicked (found as '{btn_text}')")
-                    time.sleep(1)
-                    return True
-            except:
-                continue
-
-        log_print("Select button not found")
-        return False
+        except Exception as e:
+            log_print(f"Error clicking Select button: {str(e)}")
+            log_print("Select failed - will skip to next note")
+            return False
 
     except Exception as e:
         log_print(f"Error clicking Select button: {str(e)}")
+        log_print("Select failed - will skip to next note")
         return False
 
 
