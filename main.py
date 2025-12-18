@@ -22,6 +22,7 @@ from modules.patient_search import (
 from modules.note_addition import (click_new_button,
     write_note, click_save_button, verify_patient_explorer_match)
 from modules.csv_reader import parse_note_data, get_clinic_by_name, parse_clinic_data
+from data_from_api import data_from_api
 
 
 
@@ -95,8 +96,9 @@ def process_single_note(note_data, clinic_data, window, is_first):
         
         # Step 6: Extract note title and content
         time.sleep(0.5)
+
         note_title = "Cloudrx Notification"
-        note_content = "Test note entry from automation."
+        note_content = note_data['note']
 
         log_print(f"Writing note - Title: '{note_title}', Content: '{note_content}'")
         
@@ -135,7 +137,6 @@ def process_single_note(note_data, clinic_data, window, is_first):
         log_print(f"Traceback: {traceback.format_exc()}")
         return False
 
-
 def main():
     """Main function - processes all notes from test_notes.csv"""
     # Initialize log file (uses date-based naming if LOG_FILE_PATH is None)
@@ -155,109 +156,105 @@ def main():
     # heartbeat_manager.start()
 
     log_print("=== Automation started ===")
+    while True:
+        try:
+            # Step 1: Read all notes from CSV
+            clinics, notes = data_from_api()
+            if clinics is None and notes is None:
+                log_print("Failed to fetch clinics or notes. Exiting...")
+                return
+            log_print(f"Found {len(clinics)} clinics and {len(notes)} notes")
+            for idx, clinic in clinics.iterrows():
 
-    try:
-        # Step 1: Read all notes from CSV
-        log_print("Reading test_notes.csv...")
-        with open("test_notes.csv", 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            notes = list(reader)
-        
-        if not notes:
-            log_print("ERROR: No notes found in test_notes.csv. Exiting...")
-            return
-        
-        log_print(f"Found {len(notes)} note(s) to process")
-        
-        # Step 2: Open application (execute once before main loop)
-        #check_and_wait_if_paused(heartbeat_manager)
-        app, window = open_application(APP_PATH, TARGET_TITLE)
-        if not app or not window:
-            log_print("Failed to open application. Exiting...")
-            return
+                log_print(f"Clinic: {clinic['Clinic_Name']}")
+                clinic_notes = notes[notes['clinic_name'] == clinic['Clinic_Name']].reset_index(drop=True)
+                log_print(f"Notes: {len(clinic_notes)}")
+                # Step 2: Open application (execute once before main loop)
+                #check_and_wait_if_paused(heartbeat_manager)
+                app, window = open_application(APP_PATH, TARGET_TITLE)
+                if not app or not window:
+                    log_print("Failed to open application. Exiting...")
+                    return
+                # Step 3: Change configuration (execute once after application opens)
+                # check_and_wait_if_paused(heartbeat_manager)
+                log_print("Configuring application settings...")
+                config_success = change_configuration(
+                    window=window,
+                    http_address=clinic['URL'],
+                    facility_name=clinic['Facility']
+                    #facility_name="AFCC;HFIIVF;TFI;IFI;NFI;ARI;DALLAS;AUSTIN;SA;FSH;PFCIVF;RBA;PATHWAYS;ASPIREHFI;CRMORLANDO;MLF;RMG; IVFMD"
+                )
+                # Step 4: Login (execute once after configuration)
+                #check_and_wait_if_paused(heartbeat_manager)
+                if not login(window, clinic['Username'], clinic['Password1'], clinic['clinic_name_sf']):
+                    log_print("Login failed. Exiting...")
+                    close_application(window)
+                    return
+                log_print("Login successful!")
+                # Step 5: Process each note from CSV
+                successful_count = 0
+                failed_count = 0
+                is_first = True
+                for idx, note in clinic_notes.iterrows():
+                    try:
+                        log_print(f"\n{'#'*60}")
+                        log_print(f"Processing note {idx} of {len(clinic_notes)}")
+                        log_print(f"{'#'*60}")
+                        
+                        # Parse note data
+                        note_data = parse_note_data(note)
+                        
+                        # Find matching clinic
+                        clinic_name = note_data['clinic_name']
+                        clinic_data = parse_clinic_data(clinic)
+                        
+                        if not clinic_data:
+                            log_print(f"WARNING: Clinic '{clinic_name}' not found in clinic_details.csv")
+                            log_print("Will use default settings for this note")
+                        
+                        # Process the note
+                        success = process_single_note(note_data, clinic_data, window, is_first)
+                        
+                        if success:
+                            successful_count += 1
+                            log_print(f"✓ Note {idx} processed successfully")
+                        else:
+                            failed_count += 1
+                            log_print(f"✗ Note {idx} failed to process")
+                        
+                        # Wait between notes (except for the last one)
+                        if idx < len(notes):
+                            if is_first:
+                                is_first = False
+                            log_print("Waiting 3 seconds before processing next note...")
+                            time.sleep(3)
+                    except Exception as e:
+                        log_print(f"ERROR processing note: for clinic {clinic['Clinic_Name']} and note {idx}: {idx+1} of {len(note['patient_first_name'])}:{str(e)}")
+                        log_print(f"Continuing with next patient ...")
+                        break
 
-        # Step 3: Change configuration (execute once after application opens)
-        #check_and_wait_if_paused(heartbeat_manager)
-        # log_print("Configuring application settings...")
-        # config_success = change_configuration(
-        #     window=window,
-        #     http_address="https://ww2.fertilityinstitute.com/eivf_provider",
-        #     facility_name="FINO"
-        #     #facility_name="AFCC;HFIIVF;TFI;IFI;NFI;ARI;DALLAS;AUSTIN;SA;FSH;PFCIVF;RBA;PATHWAYS;ASPIREHFI;CRMORLANDO;MLF;RMG; IVFMD"
-        # )
+                    # Summary
+                    log_print(f"\n{'='*60}")
+                    log_print("PROCESSING SUMMARY")
+                    log_print(f"{'='*60}")
+                    log_print(f"Total notes: {len(notes)}")
+                    log_print(f"Successful: {successful_count}")
+                    log_print(f"Failed: {failed_count}")
+                    log_print(f"{'='*60}")
 
-        # if not config_success:
-        #     log_print("Configuration change failed, but continuing...")
-        # else:
-        #     log_print("Configuration updated successfully!")
-
-        # Step 4: Login (execute once after configuration)
-        #check_and_wait_if_paused(heartbeat_manager)
-        if not login(window, USERNAME, PASSWORD, CLINIC_CODE):
-            log_print("Login failed. Exiting...")
-            close_application(window)
-            return
-        log_print("Login successful!")
-
-        # Step 5: Process each note from CSV
-        successful_count = 0
-        failed_count = 0
-        is_first = True
-        for idx, note_row in enumerate(notes, start=1):
-            log_print(f"\n{'#'*60}")
-            log_print(f"Processing note {idx} of {len(notes)}")
-            log_print(f"{'#'*60}")
-            
-            # Parse note data
-            note_data = parse_note_data(note_row)
-            
-            # Find matching clinic
-            clinic_name = note_data['clinic_name']
-            clinic_row = get_clinic_by_name(clinic_name, "clinic_details.csv")
-            clinic_data = parse_clinic_data(clinic_row) if clinic_row else None
-            
-            if not clinic_data:
-                log_print(f"WARNING: Clinic '{clinic_name}' not found in clinic_details.csv")
-                log_print("Will use default settings for this note")
-            
-            # Process the note
-            success = process_single_note(note_data, clinic_data, window, is_first)
-            
-            if success:
-                successful_count += 1
-                log_print(f"✓ Note {idx} processed successfully")
-            else:
-                failed_count += 1
-                log_print(f"✗ Note {idx} failed to process")
-            
-            # Wait between notes (except for the last one)
-            if idx < len(notes):
-                if is_first:
-                    is_first = False
-                log_print("Waiting 3 seconds before processing next note...")
-                time.sleep(3)
-
-        # Summary
-        log_print(f"\n{'='*60}")
-        log_print("PROCESSING SUMMARY")
-        log_print(f"{'='*60}")
-        log_print(f"Total notes: {len(notes)}")
-        log_print(f"Successful: {successful_count}")
-        log_print(f"Failed: {failed_count}")
-        log_print(f"{'='*60}")
-
-    except KeyboardInterrupt:
-        log_print("\n=== Automation stopped by user ===")
-    except Exception as e:
-        log_print(f"An error occurred: {str(e)}")
-        import traceback
-        log_print(f"Traceback: {traceback.format_exc()}")
-    finally:
-        # Stop heartbeat manager
-        #heartbeat_manager.stop()
-        # Close log file
-        close_log_file()
-        log_print("=== Automation stopped ===")
+        except KeyboardInterrupt:
+            log_print("\n=== Automation stopped by user ===")
+        except Exception as e:
+            log_print(f"An error occurred: {str(e)}")
+            import traceback
+            log_print(f"Traceback: {traceback.format_exc()}")
+        finally:
+            # Stop heartbeat manager
+            #heartbeat_manager.stop()
+            # Close log file
+            close_log_file()
+            log_print("=== Automation stopped ===")
+        time.sleep(10)
 
 def wait_for_activation(heartbeat_manager):
     """
