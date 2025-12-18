@@ -5,6 +5,9 @@ Handles clinic details, patient notes retrieval, and note verification updates.
 
 import requests
 import json
+import requests
+import json
+import config
 
 # Handle imports for both standalone and module usage
 try:
@@ -52,211 +55,155 @@ def get_clinic_details():
         log_print(f"Raw response: {response.text}")
         return None
 
-
-def admin_login(url, username, password):
-    """
-    Authenticate with the portal and get auth token and user data.
+def get_login_token(api_base_url, admin_email, admin_password):
+   
+    url = api_base_url
     
-    Args:
-        url: API endpoint URL
-        username: Admin email/username
-        password: Admin password
-        
-    Returns:
-        tuple: (auth_token, user_data) on success, (None, None) on failure
-    """
-    # Build JSON string exactly like UiPath does
-    json_string = json.dumps({
+    # Prepare the JSON data
+    data_json = {
         "method": "admin_login",
-        "role": "admin",
-        "email": username,
-        "password": password
-    })
+        "role": 'admin',
+        "public_ip": "66.172.59.18",
+        "email": admin_email,
+        "password": admin_password
+    }
+    
+    # Prepare form data
+    form_data = {
+        "data": json.dumps(data_json)
+    }
     
     try:
-        log_print(f"Authenticating with portal...")
-        log_print(f"URL: {url}")
+        # Make the POST request
+        response = requests.post(url, data=form_data, timeout=30)
+        response.raise_for_status()  # Raise an exception for bad status codes
         
-        # Send as multipart form data (like RestSharp's AlwaysMultipartFormData)
-        # Using files= parameter forces multipart/form-data encoding
-        response = requests.post(
-            url,
-            files={'data': (None, json_string)}
-        )
-        
-        log_print(f"Response Status: {response.status_code}")
-        log_print(f"Response: {response.text[:500] if response.text else 'Empty'}")
-        
+        # Parse the response
         result = response.json()
         
-        auth_token = result.get('auth_token')
-        user_data = result.get('userData')
-        
-        if auth_token and user_data:
-            log_print("Authentication successful")
-            return auth_token, user_data
+        # Check if login was successful
+        if result.get("status") == "Success" and "auth_token" in result and "userData" in result:
+            return True, {
+                "token": result["auth_token"],
+                "userData": result["userData"],
+                "user_info": result["user_info"]
+            }
         else:
-            log_print(f"Authentication failed: Missing auth_token or userData")
-            log_print(f"Response: {result}")
-            return None, None
+            # Log failed login response
+            log_print(f"Login failed. Response: {json.dumps(result, indent=2)}")
+            return False, {}
             
     except requests.exceptions.RequestException as e:
-        log_print(f"Error during authentication: {str(e)}")
-        return None, None
+        log_print(f"Login request failed: {str(e)}")
+        return False, {}
     except json.JSONDecodeError as e:
-        log_print(f"Error parsing authentication response: {str(e)}")
-        log_print(f"Raw response: {response.text[:500] if response.text else 'Empty'}")
-        return None, None
+        log_print(f"Failed to parse login response: {str(e)}")
+        return False, {}
+    except Exception as e:
+        log_print(f"Login error: {str(e)}")
+        return False, {}
 
-
-def get_patient_notes(url, username, password):
-    """
-    Get patient notes needing verification from the portal.
+def get_emr_notes(url, login_data):
     
-    This function:
-    1. Authenticates with admin_login to get auth_token and userData
-    2. Calls get_emr_notes_needing_verification to retrieve notes
-    
-    Args:
-        url: API endpoint URL
-        username: Admin email/username
-        password: Admin password
-        
-    Returns:
-        dict: Parsed JSON response containing patient notes, or None on failure
-    """
-    # Step 1: Authenticate to get token and user data
-    auth_token, user_data = admin_login(url, username, password)
-    
-    if not auth_token or not user_data:
-        log_print("Failed to authenticate. Cannot retrieve patient notes.")
-        return None
-    
-    # Step 2: Call get_emr_notes_needing_verification API
-    # Build JSON string exactly like UiPath does
-    json_string = json.dumps({
+    # Prepare the JSON data
+    data_json = {
         "method": "get_emr_notes_needing_verification",
-        "data": user_data,
-        "token": auth_token
-    })
+        "data": login_data["userData"],
+        "token": login_data["token"]
+    }
+    
+    # Prepare form data
+    form_data = {
+        "data": json.dumps(data_json)
+    }
     
     try:
-        log_print("Fetching patient notes needing verification...")
+        # Make the POST request
+        response = requests.post(url, data=form_data, timeout=30)
+        response.raise_for_status()  # Raise an exception for bad status codes
         
-        # Send as multipart form data (like RestSharp's AlwaysMultipartFormData)
-        response = requests.post(
-            url,
-            files={'data': (None, json_string)}
-        )
+        # Parse the response
+        try:
+            result = response.json()
+        except json.JSONDecodeError as e:
+            log_print(f"Failed to parse get notes response: {str(e)}")
+            log_print(f"Response text: {response.text[:500]}")  # Log first 500 chars of response
+            return False, {}
         
-        log_print(f"Notes API Response Status: {response.status_code}")
-        
-        result = response.json()
-        log_print("Successfully retrieved patient notes")
-        return result
-        
+        # Check if request was successful
+        if result.get("status") == "Success":
+            return True, result
+        else:
+            # Log failed response
+            log_print(f"Get notes failed. Response: {json.dumps(result, indent=2)}")
+            return False, {}
+            
     except requests.exceptions.RequestException as e:
-        log_print(f"Error fetching patient notes: {str(e)}")
-        return None
-    except json.JSONDecodeError as e:
-        log_print(f"Error parsing patient notes response: {str(e)}")
-        log_print(f"Raw response: {response.text[:500] if response.text else 'Empty'}")
-        return None
+        log_print(f"Get notes request failed: {str(e)}")
+        return False, {}
+    except Exception as e:
+        log_print(f"Get notes error: {str(e)}")
+        return False, {}
 
-
-def update_note_verification(url, username, password, note_id):
+def update_note_status(login_data, note_id):
     """
-    Update note verification status in the portal.
-    
-    This function:
-    1. Re-authenticates with admin_login to get fresh auth_token and userData
-    2. Calls verify_note_in_emr to update the note status
+    Update note status via API after note has been processed
     
     Args:
-        url: API endpoint URL
-        username: Admin email/username
-        password: Admin password
-        note_id: ID of the note to mark as verified
-        
+        login_data: Login data containing token and userData
+        note_id: Note ID to update
+    
     Returns:
-        dict: Parsed JSON response, or None on failure
+        tuple: (success: bool, data: dict) - Returns (True, result) if successful, 
+               (False, {"needs_token_refresh": True}) if token expired (code: 401), 
+               (False, {}) for other failures
     """
-    # Step 1: Re-authenticate to get fresh token and user data
-    log_print(f"Re-authenticating for note update (Note ID: {note_id})...")
-    auth_token, user_data = admin_login(url, username, password)
+    url = config.API_BASE_URL
     
-    if not auth_token or not user_data:
-        log_print("Failed to authenticate. Cannot update note verification.")
-        return None
-    
-    # Step 2: Call verify_note_in_emr API
-    # Build JSON string exactly like UiPath does
-    json_string = json.dumps({
-        "method": "verify_note_in_emr",
-        "data": user_data,
-        "token": auth_token,
+    # Prepare the JSON data
+    data_json = {
+        "method": "verify_note_in_emr",  # TODO: Update with actual method name
+        "data": login_data["userData"],
+        "token": login_data["token"],
         "note_id": note_id
-    })
+    }
+    
+    # Prepare form data
+    form_data = {
+        "data": json.dumps(data_json)
+    }
     
     try:
-        log_print(f"Updating note verification status for Note ID: {note_id}...")
+        # Make the POST request
+        response = requests.post(url, data=form_data, timeout=30)
+        response.raise_for_status()
         
-        # Send as multipart form data (like RestSharp's AlwaysMultipartFormData)
-        response = requests.post(
-            url,
-            files={'data': (None, json_string)}
-        )
+        # Parse the response
+        try:
+            result = response.json()
+        except json.JSONDecodeError as e:
+            nova.log_print(f"Failed to parse update note response: {str(e)}")
+            nova.log_print(f"Response text: {response.text[:500]}")
+            return False, {}
         
-        result = response.json()
-        log_print(f"Note {note_id} verification updated successfully")
-        log_print(f"Response: {result}")
-        return result
+        # Check if response code is 401 (token expired/invalid)
+        if result.get("code") == 401:
+            nova.log_print("Update note failed: Token expired or invalid (code: 401)")
+            return False, {"needs_token_refresh": True}
         
+        # Check if request was successful
+        if result.get("status") == "Success":
+            return True, result
+        else:
+            nova.log_print(f"Update note failed. Response: {json.dumps(result, indent=2)}")
+            return False, {}
+            
     except requests.exceptions.RequestException as e:
-        log_print(f"Error updating note verification: {str(e)}")
-        return None
-    except json.JSONDecodeError as e:
-        log_print(f"Error parsing update response: {str(e)}")
-        return None
-
-
-# Convenience function with default URL
-def get_patient_notes_from_portal(username, password, api_url=None):
-    """
-    Convenience wrapper to get patient notes using default or custom API URL.
-    
-    Args:
-        username: Admin email/username
-        password: Admin password
-        api_url: Optional custom API URL (defaults to portal API endpoint)
-        
-    Returns:
-        dict: Parsed JSON response containing patient notes, or None on failure
-    """
-    if api_url is None:
-        api_url = API_BASE_URL + PORTAL_API_ENDPOINT
-    
-    return get_patient_notes(api_url, username, password)
-
-
-def update_note_in_portal(username, password, note_id, api_url=None):
-    """
-    Convenience wrapper to update note verification using default or custom API URL.
-    
-    Args:
-        username: Admin email/username
-        password: Admin password
-        note_id: ID of the note to mark as verified
-        api_url: Optional custom API URL (defaults to portal API endpoint)
-        
-    Returns:
-        dict: Parsed JSON response, or None on failure
-    """
-    if api_url is None:
-        api_url = API_BASE_URL + PORTAL_API_ENDPOINT
-    
-    return update_note_verification(api_url, username, password, note_id)
-
+        nova.log_print(f"Update note request failed: {str(e)}")
+        return False, {}
+    except Exception as e:
+        nova.log_print(f"Update note error: {str(e)}")
+        return False, {}
 
 # Example usage and testing
 if __name__ == "__main__":

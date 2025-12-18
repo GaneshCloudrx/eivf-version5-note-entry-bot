@@ -46,7 +46,7 @@ def parse_note_data(note_row):
         Dictionary with parsed note data
     """
     # Parse DOB - convert from MM/DD/YYYY to MMddyyyy format
-    dob_original = note_row.get('patient_dob', '')
+    dob_original = note_row['patient_dob']
     dob_formatted = ''
     if dob_original:
         try:
@@ -60,17 +60,17 @@ def parse_note_data(note_row):
             dob_formatted = dob_original.replace('/', '')
     
     return {
-        'auto_increment_id': note_row.get('autoIncrementID', ''),
-        'note_id': note_row.get('note_id', ''),
-        'patient_first_name': note_row.get('patient_first_name', ''),
-        'patient_last_name': note_row.get('patient_last_name', ''),
+        'auto_increment_id': note_row['autoIncrementID'],
+        'note_id': note_row['note_id'],
+        'patient_first_name': note_row['patient_first_name'],
+        'patient_last_name': note_row['patient_last_name'],
         'patient_dob': dob_formatted,  # MMddyyyy format
         'patient_dob_original': dob_original,  # Original format
-        'patient_phone': note_row.get('patient_phone', ''),
-        'emr_system': note_row.get('emr_system', ''),
-        'note': note_row.get('note', ''),
-        'clinic_name': note_row.get('clinic_name', ''),
-        'created': note_row.get('created', '')
+        'patient_phone': note_row['patient_phone'],
+        'emr_system': note_row['emr_system'],
+        'note': note_row['note'],
+        'clinic_name': note_row['clinic_name'],
+        'created': note_row['created']
     }
 
 
@@ -85,18 +85,18 @@ def parse_clinic_data(clinic_row):
         Dictionary with parsed clinic data
     """
     return {
-        'clinic_id': clinic_row.get('Clinic_Id', ''),
-        'clinic_name': clinic_row.get('Clinic_Name', ''),
-        'clinic_name_sf': clinic_row.get('clinic_name_sf', ''),
-        'url': clinic_row.get('URL', ''),
-        'facility': clinic_row.get('Facility', ''),
-        'username': clinic_row.get('Username', ''),
-        'password': clinic_row.get('Password1', ''),
-        'color': clinic_row.get('Color', '').lower(),  # lowercase for color matching
-        'login_status': clinic_row.get('login_status', ''),
-        'note_bot_machine': clinic_row.get('note_bot_machine', ''),
-        'lamar_bot_machine': clinic_row.get('lamar_bot_machine', ''),
-        'ins_pulling_bot_machine': clinic_row.get('ins_pulling_bot_machine', '')
+        'clinic_id': clinic_row['Clinic_Id'],
+        'clinic_name': clinic_row['Clinic_Name'],
+        'clinic_name_sf': clinic_row['clinic_name_sf'],
+        'url': clinic_row['URL'],
+        'facility': clinic_row['Facility'],
+        'username': clinic_row['Username'],
+        'password': clinic_row['Password1'],
+        'color': clinic_row['Color'].lower(),  # lowercase for color matching
+        'login_status': clinic_row['login_status'],
+        'note_bot_machine': clinic_row['note_bot_machine'],
+        'lamar_bot_machine': clinic_row['lamar_bot_machine'],
+        'ins_pulling_bot_machine': clinic_row['ins_pulling_bot_machine']
     }
 
 
