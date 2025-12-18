@@ -13,7 +13,7 @@ from config import (
 from modules.utils import init_log_file, close_log_file, log_print
 from modules.login import open_application, login, close_application
 from modules.configuation_change import change_configuration
-from modules.patient_search import search_patient_by_dob_and_last_name, click_patient_search_button
+from modules.patient_search import search_patient_by_phone_number_and_first_name_coords, click_patient_search_button
 from modules.color_addition import set_color, search_patient_by_phone_number_and_first_name
 from modules.heartbeat import HeartbeatManager
 from modules.patient_search import (
@@ -40,22 +40,22 @@ def process_single_note(note_data, clinic_data, window, is_first):
     log_print(f"\n{'='*60}")
     log_print(f"Processing Note ID: {note_data['note_id']}")
     log_print(f"Patient: {note_data['patient_first_name']} {note_data['patient_last_name']}")
-    log_print(f"DOB: {note_data['patient_dob_original']} (formatted: {note_data['patient_dob']})")
+    log_print(f"Phone number: {note_data['patient_phone']}")
     log_print(f"Clinic: {note_data['clinic_name']}")
     log_print(f"{'='*60}")
     
     try:
-        # Step 1: Search patient by DOB and Last Name
-        patient_dob = note_data['patient_dob']
-        patient_last_name = note_data['patient_last_name']
+        # Step 1: Search patient by Phone Number and First Name
         patient_first_name = note_data['patient_first_name']
+        patient_phone_number = note_data['patient_phone']
+        patient_last_name = note_data['patient_last_name']
         
-        if not patient_dob or not patient_last_name:
-            log_print(f"ERROR: Missing required patient data (DOB or Last Name)")
+        if not patient_first_name or not patient_phone_number:
+            log_print(f"ERROR: Missing required patient data (Phone Number or First Name)")
             return False
         
-        log_print(f"Searching for patient: {patient_last_name}, DOB: {patient_dob}")
-        if not search_patient_by_dob_and_last_name(window, patient_dob, patient_last_name, is_first):
+        log_print(f"Searching for patient: {patient_first_name}, Phone number: {patient_phone_number}")
+        if not search_patient_by_phone_number_and_first_name_coords(patient_phone_number, patient_first_name, is_first):
             log_print(f"Patient search failed for {patient_first_name} {patient_last_name}")
             return False
         
@@ -63,7 +63,7 @@ def process_single_note(note_data, clinic_data, window, is_first):
         log_print("Clicking Select button...")
         time.sleep(1)  # Wait for search results to load
         
-        if not click_select_button(is_first=is_first):
+        if not click_select_button():
             log_print("Failed to click Select button")
             return False
         
@@ -87,7 +87,7 @@ def process_single_note(note_data, clinic_data, window, is_first):
         # Step 5: MANDATORY - Verify patient from Notes window before writing
         time.sleep(1)  # Wait for Notes window to load
         log_print("Verifying patient in Notes window (MANDATORY)...")
-        if not verify_patient_explorer_match(patient_first_name, patient_last_name, patient_dob):
+        if not verify_patient_explorer_match(patient_first_name, patient_last_name, patient_phone_number):
             log_print("ERROR: Patient verification from Notes window FAILED. Skipping this note...")
             return False
         
