@@ -60,7 +60,6 @@ def parse_note_data(note_row):
             dob_formatted = dob_original.replace('/', '')
     
     return {
-        'auto_increment_id': note_row['autoIncrementID'],
         'note_id': note_row['note_id'],
         'patient_first_name': note_row['patient_first_name'],
         'patient_last_name': note_row['patient_last_name'],

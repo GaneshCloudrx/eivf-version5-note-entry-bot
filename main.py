@@ -6,22 +6,17 @@ import time
 import re
 import csv
 from config import (
-    APP_PATH, TARGET_TITLE, USERNAME, PASSWORD, LOG_FILE_PATH,
-    API_BASE_URL, API_AUTH_HEADER, API_SERVER_NAME, API_BOT_NAME, API_TIMEOUT,
-    HEARTBEAT_INTERVAL, CLINIC_CODE
+    APP_PATH, TARGET_TITLE
 )
 from modules.utils import init_log_file, close_log_file, log_print
-from modules.login import open_application, login, close_application
+from modules.login import kill_application, open_application, login, close_application
 from modules.configuation_change import change_configuration
-from modules.patient_search import search_patient_by_phone_number_and_first_name_coords, click_patient_search_button
+from modules.patient_search import search_patient_by_phone_number_and_first_name_ctrl_id, click_alert_ok_button
 from modules.color_addition import set_color, search_patient_by_phone_number_and_first_name
 from modules.heartbeat import HeartbeatManager
-from modules.patient_search import (
-            click_select_button, click_alert_ok_button
-        )
 from modules.note_addition import (click_new_button,
     write_note, click_save_button, verify_patient_explorer_match)
-from modules.csv_reader import parse_note_data, get_clinic_by_name, parse_clinic_data
+from modules.data_reader import parse_note_data, get_clinic_by_name, parse_clinic_data
 from data_from_api import data_from_api
 
 
@@ -56,17 +51,10 @@ def process_single_note(note_data, clinic_data, window, is_first):
             return False
         
         log_print(f"Searching for patient: {patient_first_name}, Phone number: {patient_phone_number}")
-        if not search_patient_by_phone_number_and_first_name_coords(patient_phone_number, patient_first_name, is_first):
+        if not search_patient_by_phone_number_and_first_name_ctrl_id(patient_phone_number, patient_first_name, is_first):
             log_print(f"Patient search failed for {patient_first_name} {patient_last_name}")
             return False
         
-        # Step 2: Click Select button
-        log_print("Clicking Select button...")
-        time.sleep(1)  # Wait for search results to load
-        
-        if not click_select_button():
-            log_print("Failed to click Select button")
-            return False
         
         log_print(f"Patient '{patient_first_name} {patient_last_name}' selected!")
         
@@ -129,6 +117,7 @@ def process_single_note(note_data, clinic_data, window, is_first):
             set_color("orange")
         
         log_print(f"SUCCESS: Note processed successfully for {patient_first_name} {patient_last_name}")
+        
         return True
         
     except Exception as e:
@@ -182,11 +171,16 @@ def main():
                     window=window,
                     http_address=clinic['URL'],
                     facility_name=clinic['Facility']
-                    #facility_name="AFCC;HFIIVF;TFI;IFI;NFI;ARI;DALLAS;AUSTIN;SA;FSH;PFCIVF;RBA;PATHWAYS;ASPIREHFI;CRMORLANDO;MLF;RMG; IVFMD"
                 )
+                if not config_success:
+                    log_print("Login failed. Exiting...")
+                    close_application(window)
+                    return
+                kill_application("eIVF.exe")
+                app, window = open_application(APP_PATH, TARGET_TITLE)
                 # Step 4: Login (execute once after configuration)
                 #check_and_wait_if_paused(heartbeat_manager)
-                if not login(window, clinic['Username'], clinic['Password1'], clinic['clinic_name_sf']):
+                if not login(window, clinic['Username'], clinic['Password1'], clinic['clinic_name_sf'], clinic['URL']):
                     log_print("Login failed. Exiting...")
                     close_application(window)
                     return
@@ -201,7 +195,7 @@ def main():
                         log_print(f"Processing note {idx} of {len(clinic_notes)}")
                         log_print(f"{'#'*60}")
                         
-                        # Parse note data
+                        # PaRobyn
                         note_data = parse_note_data(note)
                         
                         # Find matching clinic
@@ -218,6 +212,14 @@ def main():
                         if success:
                             successful_count += 1
                             log_print(f"✓ Note {idx} processed successfully")
+                            #Update API
+                            log_print(f"API DATA: 4. Fetching token for admin")
+                        
+                            # status, token = get_login_token(API_BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD)
+                            # if status:
+                            #     log_print(f"API DATA: 5. Token fetched successfully")
+                            #     status, note_details = update(API_BASE_URL, token)  
+                            #     if status:
                         else:
                             failed_count += 1
                             log_print(f"✗ Note {idx} failed to process")

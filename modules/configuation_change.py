@@ -3,9 +3,10 @@ Configuration change module - handles changing eIVF application settings
 """
 from pywinauto import Desktop
 import time
+from modules.login import kill_application
 from modules.utils import log_print
 
-def change_configuration(window, http_address="https://eivfdfw.aspirefertility.com/eivf_provider", facility_name="AFCC;HFIIVF;TFI;IFI;NFI;ARI;DALLAS;AUSTIN;SA;FSH;PFCIVF;RBA;PATHWAYS;ASPIREHFI;CRMORLANDO;MLF;RMG; IVFMD"):
+def change_configuration(window, http_address, facility_name):
     """
     Change eIVF application configuration settings.
 
@@ -79,6 +80,13 @@ def change_configuration(window, http_address="https://eivfdfw.aspirefertility.c
             time.sleep(0.2)
             facility_field.type_keys("{BACKSPACE}", with_spaces=True)
             time.sleep(0.2)
+
+            #Doing this two times
+            facility_field.double_click_input()
+            time.sleep(0.2)
+            facility_field.type_keys("{BACKSPACE}", with_spaces=True)
+            time.sleep(0.2)
+
             # Type new facility name
             facility_field.type_keys(facility_name, with_spaces=True)
             time.sleep(0.5)

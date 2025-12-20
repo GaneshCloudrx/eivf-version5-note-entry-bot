@@ -228,7 +228,7 @@ def click_new_button():
                 auto_id="31",
                 control_type="CheckBox"
             )
-            if results_checkbox.exists(timeout=2):
+            if results_checkbox.exists(timeout=5):
                 log_print("✔ Results checkbox found (auto_id=31)")
             else:
                 log_print("❌ Results checkbox (auto_id=31) not found")

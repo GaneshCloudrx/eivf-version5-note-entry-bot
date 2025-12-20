@@ -4,13 +4,16 @@ Login module - handles application opening and user login
 from pywinauto import Application, Desktop
 import time
 from modules.utils import log_print
+import psutil
 
 def open_application(app_path, target_title, max_wait_time=30):
     """
     Open the eIVF application if not already open. Ensures only one instance is running.
     Returns: (app, window) tuple or (None, None) if failed
     """
+    kill_application("eIVF.exe")
     log_print("=== Opening Application ===")
+    
     desktop = Desktop(backend="uia")
     target_class = "ThunderRT6FormDC"  # VB6 application class
 
@@ -76,6 +79,16 @@ def open_application(app_path, target_title, max_wait_time=30):
     log_print("Failed to open application")
     return None, None
 
+def kill_application(process_name):
+    for proc in psutil.process_iter(['pid', 'name']):
+        try:
+            if proc.info['name'].lower() == process_name.lower():
+                print(f"Killing {process_name} (PID: {proc.info['pid']})")
+                proc.kill()
+        except(psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
+
 def close_application(window):
     """
     Close the application by clicking the Cancel button on the login window.
@@ -95,8 +108,12 @@ def close_application(window):
     except Exception as e:
         log_print(f"Error closing application: {str(e)}")
         return False
+    finally:
+        kill_application("eIVF.exe")
 
-def login(window, email, pin, clinic_code):
+
+
+def login(window, email, pin, clinic_code, http_address):
     """
     Perform login with email and password.
     Returns: True if successful, False otherwise
@@ -139,17 +156,18 @@ def login(window, email, pin, clinic_code):
             log_print(f"Error entering password: {str(e)}")
             return False
         
-        # log_print("Entering Clinic Code...")
-        # try:
-        #     # Clinic code is a ComboBox, not a TextBox
-        #     clinic_code_field = window.child_window(auto_id="10", class_name="ThunderRT6ComboBox")
-        #     clinic_code_field.set_focus()
-        #     time.sleep(0.3)
-        #     clinic_code_field.type_keys(clinic_code, with_spaces=True)
-        #     time.sleep(0.5)
-        # except Exception as e:
-        #     log_print(f"Error entering clinic code: {str(e)}")
-        #     return False
+        log_print("Entering Clinic Code...")
+        if http_address == "https://eivfdfw.aspirefertility.com/eivf_provider":
+            try:
+                # Clinic code is a ComboBox, not a TextBox
+                clinic_code_field = window.child_window(auto_id="10", class_name="ThunderRT6ComboBox")
+                clinic_code_field.set_focus()
+                time.sleep(0.3)
+                clinic_code_field.type_keys(clinic_code, with_spaces=True)
+                time.sleep(0.5)
+            except Exception as e:
+                log_print(f"Error entering clinic code: {str(e)}")
+                return False
 
         # Click login button
         log_print("Clicking login button...")

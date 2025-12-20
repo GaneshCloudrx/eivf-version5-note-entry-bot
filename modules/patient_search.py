@@ -452,10 +452,10 @@ def get_patient_search_window(max_wait=5):
 
 
 
-def search_patient_by_phone_number_and_first_name_coords(phone_number, first_name, is_first=True):
+def search_patient_by_phone_number_and_first_name_ctrl_id(phone_number, first_name, is_first=True):
     """
-    Coordinate-based patient search by Phone Number and First Name.
-    Uses hardcoded coordinates instead of window detection.
+    Search patient by Phone Number and First Name using win32 backend.
+    Uses control_id based element detection instead of coordinates.
     
     Args:
         phone_number: Phone number as string (e.g., "4155553333")
@@ -465,41 +465,22 @@ def search_patient_by_phone_number_and_first_name_coords(phone_number, first_nam
     Returns:
         True if successful, False otherwise
     """
-    log_print(f"\n=== Searching Patient by Phone Number: {phone_number} and First Name: {first_name} (Coordinate-based) ===")
-    
-    # Coordinates for Patient Search window elements (same as test_coor.py)
-    coordinates = {
-        "phone_number": (836, 572),   # Phone number field coordinates
-        "first_name": (849, 438),      # First name field coordinates
-        "text_button": (851, 591),     # Text input box/button
-        "search_button": (986, 598),   # Search button
-        "row": (1028, 633),            # Result row to select
-        "select_button": (1191, 788)   # Select button
-    }
+    log_print(f"\n=== Searching Patient by Phone Number: {phone_number} and First Name: {first_name} ===")
     
     try:
-        # Get main eIVF window
-        app, main_window = get_eivf_main_window()
-        if not main_window:
-            log_print("Could not find eIVF window")
-            return False
-        
-        # Ensure window is active
-        try:
-            main_window.set_focus()
-        except Exception as e:
-            log_print(f"Could not set focus: {e}")
-        time.sleep(1)
-        
         # Step 0: Open Patient Search - different for first time vs subsequent times
         if is_first:
             # First time: Click Patient Explorer from sidebar
             log_print("First note: Clicking Patient Explorer from sidebar...")
-            if not open_patient_search_from_sidebar(main_window):
+            app_uia, main_window_uia = get_eivf_main_window()
+            if not main_window_uia:
+                log_print("Could not find eIVF window")
+                return False
+            if not open_patient_search_from_sidebar(main_window_uia):
                 log_print("Failed to open Patient Explorer from sidebar")
                 return False
             log_print("Patient Explorer opened from sidebar!")
-            time.sleep(2)  # Wait for Patient Explorer to open
+            time.sleep(2)
         else:
             # Subsequent times: Click Patient Search button
             log_print("Subsequent note: Clicking Patient Search button...")
@@ -507,149 +488,73 @@ def search_patient_by_phone_number_and_first_name_coords(phone_number, first_nam
                 log_print("Failed to click Patient Search button")
                 return False
             log_print("Patient Search button clicked!")
-            time.sleep(2)  # Wait for Patient Search window to appear
+            time.sleep(2)
         
-        # Step 1: Select phone number field, click text button, enter phone number, then click search
-        log_print("Selecting phone number field...")
-        try:
-            main_window.click_input(coords=coordinates.get("phone_number"))
-            time.sleep(0.3)
-            log_print("✔ Phone number field selected")
-        except Exception as e:
-            log_print(f"Error selecting phone number field: {e}")
-            return False
+        # Connect using win32 backend for reliable element detection
+        app = Application(backend="win32").connect(class_name="ThunderRT6MDIForm", title="eIVF")
         
-        # Click text button/box
-        log_print("Clicking text button for phone number...")
-        try:
-            main_window.click_input(coords=coordinates.get("text_button"))
-            time.sleep(0.5)
-            # Clear any existing text - try multiple methods to handle spaces
-            main_window.click_input(coords=coordinates.get("text_button"))
-            time.sleep(0.2)
-            # Try Ctrl+A to select all, then Delete
-            send_keys("^a", with_spaces=True)  # Ctrl+A to select all
-            time.sleep(0.2)
-            send_keys("{DELETE}", with_spaces=True)  # Delete to clear
-            time.sleep(0.2)
-            # Fallback: double-click and multiple backspaces to ensure all text is cleared (handles spaces)
-            main_window.double_click_input(coords=coordinates.get("text_button"))
-            time.sleep(0.2)
-            # Press backspace multiple times to ensure all text including spaces is cleared
-            for _ in range(30):  # Clear up to 30 characters (handles spaces and long text)
-                send_keys("{BACKSPACE}", with_spaces=True)
-            time.sleep(0.2)
-            # Type phone number
-            send_keys(phone_number, with_spaces=True)
-            time.sleep(1)
-            log_print(f"Phone number '{phone_number}' entered in text box")
-        except Exception as e:
-            log_print(f"Error entering phone number: {e}")
-            return False
+        # Find the Patient Search window
+        patient_search = app.window(class_name="ThunderRT6FormDC", title_re=".*Patient Search.*")
+        patient_search.wait("visible", timeout=10)
+        log_print(f"Found Patient Search window: {patient_search.window_text()}")
         
-        # Click search button
-        log_print("Clicking search button (Phone Number search)...")
-        try:
-            main_window.click_input(coords=coordinates.get("search_button"))
-            time.sleep(1)
-        except Exception as e:
-            log_print(f"Error with search button: {e}")
-            return False
+        # Step 1: Click Phone Number radio button (title="Phone  Number" with 2 spaces)
+        log_print("Clicking Phone Number radio button...")
+        phone_number_radio = patient_search.child_window(class_name="ThunderRT6OptionButton", title="Phone  Number")
+        phone_number_radio.click()
+        log_print("Phone Number radio button clicked")
+        time.sleep(0.5)
         
-        # Step 2: Select First Name field, click text button, enter first name, then click search
-        log_print("Selecting first name field...")
-        try:
-            main_window.click_input(coords=coordinates.get("first_name"))
-            time.sleep(0.3)
-            log_print("First name field selected")
-        except Exception as e:
-            log_print(f"Error selecting first name field: {e}")
-            return False
+        # Step 2: Find text box and type phone number (control_id=14)
+        log_print(f"Entering phone number: {phone_number}")
+        search_textbox = patient_search.child_window(class_name="ThunderRT6TextBox", control_id=14)
+        search_textbox.set_focus()
+        # Clear existing content with Ctrl+A + Backspace, then type new text
+        search_textbox.type_keys("^a{BACKSPACE}" + phone_number)
+        log_print("Phone number entered")
+        time.sleep(0.5)
         
-        # Click text button/box
-        log_print("Clicking text button for first name...")
-        try:
-            main_window.click_input(coords=coordinates.get("text_button"))
-            time.sleep(0.5)
-            # Clear any existing text - use Ctrl+A to select all, then Delete
-            main_window.click_input(coords=coordinates.get("text_button"))
-            time.sleep(0.2)
-            send_keys("^a", with_spaces=True)  # Ctrl+A to select all
-            time.sleep(0.2)
-            send_keys("{DELETE}", with_spaces=True)  # Delete to clear
-            time.sleep(0.3)
-            # If Ctrl+A doesn't work, try double-click and multiple backspaces
-            main_window.double_click_input(coords=coordinates.get("text_button"))
-            time.sleep(0.2)
-            # Press backspace multiple times to ensure all text is cleared
-            for _ in range(20):  # Clear up to 20 characters
-                send_keys("{BACKSPACE}", with_spaces=True)
-            time.sleep(0.2)
-            # Type first name
-            send_keys(first_name, with_spaces=True)
-            time.sleep(1)
-            log_print(f"First name '{first_name}' entered in text box")
-        except Exception as e:
-            log_print(f"Error entering first name: {e}")
-            return False
+        # Step 3: Click search button (control_id=13)
+        log_print("Clicking search button...")
+        search_button = patient_search.child_window(class_name="ThunderRT6CommandButton", control_id=13)
+        search_button.click()
+        log_print("Search button clicked")
+        time.sleep(0.5)
+        
+        # Re-fetch the Patient Search window after search to get fresh reference
+        patient_search = app.window(class_name="ThunderRT6FormDC", title_re=".*Patient Search.*")
+        patient_search.wait("visible", timeout=10)
+        
+        # Step 4: Click First Name radio button (control_id=18)
+        log_print("Clicking First Name radio button...")
+        first_name_radio = patient_search.child_window(class_name="ThunderRT6OptionButton", control_id=18)
+        first_name_radio.click_input()
+        log_print("First Name radio button clicked")
+        time.sleep(0.5)
+        
+        # Step 5: Find text box and type first name (control_id=14)
+        log_print(f"Entering first name: {first_name}")
+        search_textbox = patient_search.child_window(class_name="ThunderRT6TextBox", control_id=14)
+        search_textbox.set_focus()
+        # Clear existing content with Ctrl+A + Backspace, then type new text
+        search_textbox.type_keys("^a{BACKSPACE}" + first_name)
+        log_print("First name entered")
+        time.sleep(0.5)
         
         log_print("=== Patient Phone Number + First Name search completed successfully ===")
+
+
+        # Click the search icon button (control_id=13, ClassName="ThunderRT6CommandButton")
+        search_button = patient_search.child_window(class_name="ThunderRT6CommandButton", control_id=4)
+        search_button.click()
+        print("Clicked search button")
+        time.sleep(0.5)
         return True
         
     except Exception as e:
-        log_print(f"Error in coordinate-based patient search: {e}")
+        log_print(f"Error in patient search: {e}")
         import traceback
         traceback.print_exc()
-        return False
-
-
-
-def click_select_button():
-    """
-    Click the 'Select' button in the Patient Search window.
-    If select fails, returns False so the main flow can skip to next note.
-
-    Returns:
-        True if successful, False otherwise (will skip to next note)
-    """
-    log_print("Clicking Select button (coordinate-based)...")
-
-    try:
-        # Get main eIVF window
-        app, main_window = get_eivf_main_window()
-        if not main_window:
-            log_print("Could not find eIVF window")
-            return False
-
-        # Coordinates for selecting row and clicking select button
-        coordinates = {
-            "row": (1028, 633),        # Result row to select
-            "select_button": (1191, 788) # Select button
-        }
-        
-        # Select the row first
-        log_print("Selecting result row...")
-        try:
-            main_window.click_input(coords=coordinates.get("row"))
-            time.sleep(0.5)
-        except Exception as e:
-            log_print(f"⚠️ Error selecting row: {e}")
-        
-        # Click select button
-        log_print("Clicking select button...")
-        try:
-            main_window.click_input(coords=coordinates.get("select_button"))
-            time.sleep(1)
-            log_print("Select button clicked successfully")
-            return True
-        except Exception as e:
-            log_print(f"Error clicking Select button: {str(e)}")
-            log_print("Select failed - will skip to next note")
-            return False
-
-    except Exception as e:
-        log_print(f"Error clicking Select button: {str(e)}")
-        log_print("Select failed - will skip to next note")
         return False
 
 
