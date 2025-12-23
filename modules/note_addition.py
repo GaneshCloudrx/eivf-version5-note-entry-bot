@@ -1,7 +1,8 @@
-from pywinauto import Desktop, mouse
+from pywinauto import Application, Desktop, mouse
 from pywinauto.keyboard import send_keys
 import time
 import re
+import pyperclip
 
 from modules.patient_search import get_eivf_main_window
 from modules.utils import log_print
@@ -27,6 +28,7 @@ def write_note(note_title, note_text):
         True if successful, False otherwise
     """
     log_print(f"Writing note - Title: '{note_title}', Content: '{note_text}'")
+    note_text = re.sub(r"<br>|</br>|<br/>|</n>", "\n", note_text).strip()
 
     try:
         app, main_window = get_eivf_main_window()
@@ -42,10 +44,6 @@ def write_note(note_title, note_text):
 
         time.sleep(1)  # Wait for window to be fully ready
 
-        # First, press Escape to close any Templates panel that might be open
-        log_print("Pressing Escape to close Templates panel if open...")
-        send_keys("{ESC}")
-        time.sleep(0.5)
 
         # Now find and click on the note content area
         # Search for "eIVF Note Screen" (the IE control for note content)
@@ -79,13 +77,16 @@ def write_note(note_title, note_text):
             mouse.click(coords=note_area)
             time.sleep(0.5)
 
-        # Type the note content
+        # Paste the note content using clipboard (preserves newlines)
         try:
-            send_keys(note_text, with_spaces=True)
-            log_print(f"Note content typed: '{note_text}'")
+            pyperclip.copy(note_text)
+            log_print("Note content copied to clipboard")
+            send_keys("^v")  # Ctrl+V to paste
+            time.sleep(0.3)
+            log_print(f"Note content pasted: '{note_text}'")
             note_entered = True
         except Exception as e:
-            log_print(f"Typing failed: {e}")
+            log_print(f"Pasting failed: {e}")
 
         # ============ STEP 2: Enter Title ============
         log_print("Step 2: Entering note title...")
@@ -265,9 +266,9 @@ def click_new_button():
         try:
             new_btn = main_window.child_window(title="New", control_type="Button")
             if new_btn.exists(timeout=2):
-                new_btn.click_input()
+                new_btn.invoke()
                 log_print("New button clicked (direct)")
-                time.sleep(0.5)
+                time.sleep(2)
                 return True
         except Exception:
             pass
@@ -303,135 +304,82 @@ def safe_text(elem):
 
 def get_notes_window_patient_details():
     """
-    Extract patient details from the Notes window header.
-    The patient header is a Windows Forms Panel control (Panel1) with class WindowsForms10.*
-    Returns dict with first_name, last_name, dob, patient_id (where found) or None.
+    Extract patient details from the Notes window header using win32 backend.
+    Uses simpler approach: find Notes window, get lblTitle label, extract text.
+    Returns dict with first_name, last_name, dob, patient_id, phone_number (where found) or None.
     """
-    log_print("get_notes_window_patient_details: start (v4 - WinForms search)")
+    log_print("get_notes_window_patient_details: start (v5 - win32 approach)")
 
     try:
-        app, main_window = get_eivf_main_window()
-        if not main_window:
-            log_print("main window not found")
+        # Step 1: Find Notes window from Desktop and get its PID
+        desktop = Desktop(backend="win32")
+        
+        notes_pid = None
+        for win in desktop.windows():
+            try:
+                title = win.window_text()
+                if "Notes" in title and "Quick Summary" in title:
+                    notes_pid = win.process_id()
+                    log_print(f"Found Notes window: {title}, PID: {notes_pid}")
+                    break
+            except:
+                pass
+        
+        if not notes_pid:
+            log_print("Notes window not found")
             return None
-
-        # helper regexes
+        
+        # Step 2: Connect to the Notes application using its PID
+        app = Application(backend="win32").connect(process=notes_pid)
+        notes_window = app.window(title_re=".*Notes.*Quick Summary.*")
+        
+        # Step 3: Find lblTitle label - the one that contains "Quick Notes:"
+        lbl_title = notes_window.child_window(class_name_re=".*WindowsForms10\\.STATIC.*", title_re=".*Quick Notes.*")
+        patient_info = lbl_title.window_text()
+        log_print(f"Patient Info: {patient_info}")
+        
+        if not patient_info:
+            log_print("Could not extract patient info from lblTitle")
+            return None
+        
+        # Step 4: Parse the patient info text
+        # Helper regexes
         DOB_RE_LOCAL = re.compile(r'\bDOB[:\s]*(\d{1,2}/\d{1,2}/\d{4})\b', re.IGNORECASE)
-        DATE_RE_LOCAL = re.compile(r'(\d{1,2}/\d{1,2}/\d{4})')
         ID_RE_LOCAL = re.compile(r'\((\d{2,})\)')
-        URL_LIKE = re.compile(r'https?://|www\.|\.htm|\.html', re.IGNORECASE)
-
-        candidates = []
-
-        # Step 1: Search for Windows Forms lblTitle control
-        # The patient header is:
-        #   - ControlType: Text
-        #   - ClassName: WindowsForms10.STATIC.app.0.141b42a_r7_ad1
-        #   - AutomationId: lblTitle
-        #   - Name property contains the patient info
-        log_print("Step 1: Searching for Windows Forms lblTitle control...")
-        try:
-            # Search desktop for the specific lblTitle control
-            desktop = get_desktop()
-            all_windows = desktop.windows()
-
-            for win in all_windows:
-                try:
-                    # Look for WindowsForms Text controls with lblTitle
-                    for desc in win.descendants():
-                        try:
-                            cls = getattr(desc.element_info, "class_name", "") or ""
-                            auto_id = getattr(desc.element_info, "automation_id", "") or ""
-                            ctrl_type = getattr(desc.element_info, "control_type", "") or ""
-
-                            # Check for the specific lblTitle control
-                            if auto_id == "lblTitle" or ("WindowsForms" in cls and "STATIC" in cls):
-                                name = getattr(desc.element_info, "name", "") or ""
-                                txt = safe_text(desc)
-
-                                log_print(f"Found lblTitle: class='{cls}' auto_id='{auto_id}' ctrl='{ctrl_type}'")
-                                log_print(f"  Name property: '{name[:150] if name else 'empty'}'")
-
-                                # The patient info is in the Name property
-                                if name and ("DOB" in name or "Quick Notes" in name):
-                                    log_print(f"  --> PATIENT INFO FOUND in Name property!")
-                                    candidates.append(name)
-                                elif txt and ("DOB" in txt or "Quick Notes" in txt):
-                                    log_print(f"  --> PATIENT INFO FOUND in text!")
-                                    candidates.append(txt)
-                        except:
-                            continue
-                except:
-                    continue
-        except Exception as e:
-            log_print(f"Error searching for lblTitle control: {e}")
-
-        # Check if we found patient info
-        if candidates:
-            log_print(f"Step 1 SUCCESS: Found {len(candidates)} candidate(s) with patient info")
-
-        # No candidates found
-        if not candidates:
-            log_print("No patient info candidates found in Notes window")
-            return None
-
-        # Choose the best candidate (prefer ones with DOB pattern)
-        log_print(f"Found {len(candidates)} candidate(s)")
-        chosen = None
-        for txt in candidates:
-            if URL_LIKE.search(txt):
-                continue
-            if DOB_RE_LOCAL.search(txt):
-                chosen = txt
-                log_print(f"Chosen candidate with DOB: '{txt[:150]}'")
-                break
-
-        if not chosen and candidates:
-            chosen = candidates[0]
-            log_print(f"Using first candidate: '{chosen[:150]}'")
-
-        if not chosen:
-            log_print("No valid candidate found")
-            return None
-
-        # Parse the chosen text
+        
         patient = {}
-
+        
         # Extract DOB
-        dob_match = DOB_RE_LOCAL.search(chosen)
+        dob_match = DOB_RE_LOCAL.search(patient_info)
         if dob_match:
             patient['dob'] = dob_match.group(1)
             log_print(f"Extracted DOB: {patient['dob']}")
-
+        
         # Extract Patient ID
-        id_match = ID_RE_LOCAL.search(chosen)
+        id_match = ID_RE_LOCAL.search(patient_info)
         if id_match:
             patient['patient_id'] = id_match.group(1)
             log_print(f"Extracted Patient ID: {patient['patient_id']}")
-
-        # Extract Phone Number
-        # Try patterns like "(000) 000-0000" or "B: (000) 000-0000" or "Phone Number (B:): (000) 000-0000"
+        
+        # Extract Phone Number (patterns like "(000) 000-0000" or "M:(000) 000-0000")
         phone_patterns = [
-            re.compile(r'Phone\s*Number\s*\(B:\)[:\s]*\(?(\d{3})\)?\s*-?\s*(\d{3})\s*-?\s*(\d{4})', re.IGNORECASE),
-            re.compile(r'B:[:\s]*\(?(\d{3})\)?\s*-?\s*(\d{3})\s*-?\s*(\d{4})', re.IGNORECASE),
+            re.compile(r'M:\s*\(?(\d{3})\)?\s*-?\s*(\d{3})\s*-?\s*(\d{4})', re.IGNORECASE),
             re.compile(r'\((\d{3})\)\s*-?\s*(\d{3})\s*-?\s*(\d{4})', re.IGNORECASE),
         ]
         for phone_pattern in phone_patterns:
-            phone_match = phone_pattern.search(chosen)
+            phone_match = phone_pattern.search(patient_info)
             if phone_match:
-                # Format as (XXX) XXX-XXXX
                 phone_number = f"({phone_match.group(1)}) {phone_match.group(2)}-{phone_match.group(3)}"
                 patient['phone_number'] = phone_number
                 log_print(f"Extracted Phone Number: {patient['phone_number']}")
                 break
         
-        # Extract Name
-        # Try "Quick Notes: FirstName MiddleName LastName (ID)" pattern
-        name_pattern = re.search(r'Quick\s*(Notes|Summary)[:\s]*([A-Za-z0-9\.\'\- ]+)\s*\(', chosen, re.IGNORECASE)
+        # Extract Name - "Quick Notes: FirstName LastName (ID)" pattern
+        name_pattern = re.search(r'Quick\s*(Notes|Summary)[:\s]*([A-Za-z0-9\.\'\- ]+)\s*\(', patient_info, re.IGNORECASE)
         if name_pattern:
             full_name = name_pattern.group(2).strip()
             log_print(f"Extracted full name: '{full_name}'")
-
+            
             name_parts = full_name.split()
             if len(name_parts) >= 2:
                 patient['first_name'] = name_parts[0]
@@ -440,12 +388,12 @@ def get_notes_window_patient_details():
             elif len(name_parts) == 1:
                 patient['first_name'] = name_parts[0]
                 patient['last_name'] = ''
-
+        
         if patient.get('dob') or patient.get('first_name'):
             log_print(f"Final parsed patient: {patient}")
             return patient
-
-        log_print("Could not parse patient details from candidate text")
+        
+        log_print("Could not parse patient details from text")
         return None
 
     except Exception as e:

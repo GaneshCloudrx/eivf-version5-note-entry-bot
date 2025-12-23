@@ -1,5 +1,5 @@
 from modules.utils import log_print
-from modules.api_integration import get_clinic_details, get_login_token, get_emr_notes
+from modules.api_integration import get_clinic_details, get_login_token, get_emr_notes, update_note_status
 import pandas as pd
 import base64
 from Crypto.Cipher import AES
@@ -94,6 +94,13 @@ def data_from_api():
     except Exception as e:
         log_print(f"API DATA: #. Error in data_from_api: {str(e)}")
         return None, None
+
+def update_api(note_id):
+    status, token = get_login_token(API_BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD)
+    if status:
+        log_print(f"API DATA: 5. Token fetched successfully")
+        update_note_status(token, note_id) 
+
 
 if __name__ == "__main__":
     data_from_api()

@@ -570,56 +570,25 @@ def click_alert_ok_button():
     log_print("Checking for Patient Alert dialog...")
 
     try:
-        # Get the main eIVF window
-        app, main_window = get_eivf_main_window()
+        app = Application(backend="win32").connect(class_name="ThunderRT6MDIForm", title="eIVF")
+        # Find the Alert dialog window (title starts with "Alert !!!")
+        alert_window = app.window(title_re=".*Alert.*")
+        alert_window.wait("visible", timeout=10)
+        print(f"Found Alert window: {alert_window.window_text()}")
 
-        if not main_window:
-            log_print("Could not find main eIVF window")
-            return False
+        time.sleep(0.5)
 
-        # Look for Alert dialog - title starts with "Alert !!!"
-        try:
-            alert_window = main_window.child_window(
-                title_re=".*Alert.*",
-                control_type="Window"
-            )
+        # Set focus on Alert window first
+        alert_window.set_focus()
+        time.sleep(0.3)
 
-            if alert_window.exists(timeout=3):
-                log_print("Found Alert dialog")
-
-                # Find and click OK button
-                ok_button = alert_window.child_window(
-                    title="OK",
-                    control_type="Button"
-                )
-
-                if ok_button.exists(timeout=2):
-                    ok_button.click_input()
-                    log_print("Alert OK button clicked successfully")
-                    time.sleep(0.5)
-                    return True
-                else:
-                    # Try finding by class
-                    buttons = alert_window.children(control_type="Button")
-                    for btn in buttons:
-                        try:
-                            if "ok" in btn.window_text().lower():
-                                btn.click_input()
-                                log_print("Alert OK button clicked")
-                                time.sleep(0.5)
-                                return True
-                        except:
-                            continue
-
-                    log_print("OK button not found in Alert dialog")
-                    return False
-            else:
-                log_print("No Alert dialog found - continuing")
-                return True  # No alert is OK
-
-        except Exception as e:
-            log_print(f"No Alert dialog: {e}")
-            return True  # No alert is OK
+        # Click OK button by title="OK" (searching in descendants, not just direct children)
+        ok_button = alert_window.child_window(title="OK", class_name="ThunderRT6CommandButton")
+        ok_button.set_focus()
+        time.sleep(0.2)
+        ok_button.click_input()
+        print("Clicked OK button on Alert")
+        return True
 
     except Exception as e:
         log_print(f"Error handling Alert dialog: {str(e)}")

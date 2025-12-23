@@ -17,7 +17,7 @@ from modules.heartbeat import HeartbeatManager
 from modules.note_addition import (click_new_button,
     write_note, click_save_button, verify_patient_explorer_match)
 from modules.data_reader import parse_note_data, get_clinic_by_name, parse_clinic_data
-from data_from_api import data_from_api
+from data_from_api import data_from_api, update_api
 
 
 
@@ -85,7 +85,7 @@ def process_single_note(note_data, clinic_data, window, is_first):
         # Step 6: Extract note title and content
         time.sleep(0.5)
 
-        note_title = "Cloudrx Notification"
+        note_title = "CLOUDRX NOTIFICATION"
         note_content = note_data['note']
 
         log_print(f"Writing note - Title: '{note_title}', Content: '{note_content}'")
@@ -145,24 +145,29 @@ def main():
     # heartbeat_manager.start()
 
     log_print("=== Automation started ===")
-    while True:
+    is_continue = True
+    while is_continue:
         try:
             # Step 1: Read all notes from CSV
             clinics, notes = data_from_api()
             if clinics is None and notes is None:
                 log_print("Failed to fetch clinics or notes. Exiting...")
-                return
+                raise Exception("No Data Found")
+
             log_print(f"Found {len(clinics)} clinics and {len(notes)} notes")
             for idx, clinic in clinics.iterrows():
 
                 log_print(f"Clinic: {clinic['Clinic_Name']}")
                 clinic_notes = notes[notes['clinic_name'] == clinic['Clinic_Name']].reset_index(drop=True)
                 log_print(f"Notes: {len(clinic_notes)}")
+                if len(clinic_notes) < 1:
+                    continue
                 # Step 2: Open application (execute once before main loop)
                 #check_and_wait_if_paused(heartbeat_manager)
                 app, window = open_application(APP_PATH, TARGET_TITLE)
                 if not app or not window:
                     log_print("Failed to open application. Exiting...")
+                    raise Exception("Login Issue")
                     return
                 # Step 3: Change configuration (execute once after application opens)
                 # check_and_wait_if_paused(heartbeat_manager)
@@ -214,12 +219,8 @@ def main():
                             log_print(f"✓ Note {idx} processed successfully")
                             #Update API
                             log_print(f"API DATA: 4. Fetching token for admin")
-                        
-                            # status, token = get_login_token(API_BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD)
-                            # if status:
-                            #     log_print(f"API DATA: 5. Token fetched successfully")
-                            #     status, note_details = update(API_BASE_URL, token)  
-                            #     if status:
+                            update_api(note_data['note_id'])
+                            
                         else:
                             failed_count += 1
                             log_print(f"✗ Note {idx} failed to process")
@@ -246,17 +247,23 @@ def main():
 
         except KeyboardInterrupt:
             log_print("\n=== Automation stopped by user ===")
+            is_continue = False
         except Exception as e:
             log_print(f"An error occurred: {str(e)}")
             import traceback
             log_print(f"Traceback: {traceback.format_exc()}")
-        finally:
-            # Stop heartbeat manager
-            #heartbeat_manager.stop()
-            # Close log file
-            close_log_file()
-            log_print("=== Automation stopped ===")
-        time.sleep(10)
+            
+            if "No Data" in str(e):
+                log_print("\n=== Waiting for 30 secs ===")
+                time.sleep(30)
+                is_continue = True
+
+            elif "Login Issue" in str(e):
+                log_print("\n=== Login Issue Detected. Retrying to login ===")
+                is_continue = True
+
+            else:
+                is_continue = False
 
 def wait_for_activation(heartbeat_manager):
     """

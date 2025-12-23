@@ -182,27 +182,27 @@ def update_note_status(login_data, note_id):
         try:
             result = response.json()
         except json.JSONDecodeError as e:
-            nova.log_print(f"Failed to parse update note response: {str(e)}")
-            nova.log_print(f"Response text: {response.text[:500]}")
+            log_print(f"Failed to parse update note response: {str(e)}")
+            log_print(f"Response text: {response.text[:500]}")
             return False, {}
         
         # Check if response code is 401 (token expired/invalid)
         if result.get("code") == 401:
-            nova.log_print("Update note failed: Token expired or invalid (code: 401)")
+            log_print("Update note failed: Token expired or invalid (code: 401)")
             return False, {"needs_token_refresh": True}
         
         # Check if request was successful
         if result.get("status") == "Success":
             return True, result
         else:
-            nova.log_print(f"Update note failed. Response: {json.dumps(result, indent=2)}")
+            log_print(f"Update note failed. Response: {json.dumps(result, indent=2)}")
             return False, {}
             
     except requests.exceptions.RequestException as e:
-        nova.log_print(f"Update note request failed: {str(e)}")
+        log_print(f"Update note request failed: {str(e)}")
         return False, {}
     except Exception as e:
-        nova.log_print(f"Update note error: {str(e)}")
+        log_print(f"Update note error: {str(e)}")
         return False, {}
 
 # Example usage and testing
