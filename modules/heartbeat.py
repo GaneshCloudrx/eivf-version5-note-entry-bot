@@ -4,7 +4,7 @@ Heartbeat module - sends heartbeat to API and handles remote control (pause/resu
 import threading
 import time
 import requests
-from modules.utils import log_print
+from modules.helper import log_print
 
 
 class HeartbeatManager:
@@ -50,7 +50,7 @@ class HeartbeatManager:
             daemon=True  # Daemon thread - doesn't prevent program exit
         )
         self.thread.start()
-        log_print("Heartbeat manager started")
+        log_print("Heartbeat Process started to runnning in background")
     
     def stop(self):
         """Stop heartbeat thread"""

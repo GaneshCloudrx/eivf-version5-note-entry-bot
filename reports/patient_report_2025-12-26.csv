@@ -1,0 +1,5 @@
+note_id,patient_first_name,patient_last_name,patient_phone,clinic_name,status,failure_count,last_attempt_time
+"15509339,15509340,15509341,15509342",Jian,Wu,9175824879,Generation Next Fertility,verification_failed,1,2025-12-26 07:42:08
+"15509339,15509340,15509341,15509342",Jian,Wu,9175824879,Generation Next Fertility,success,0,2025-12-26 07:54:13
+15509017,Jian,Wu,9175824879,Generation Next Fertility,success,0,2025-12-26 07:55:26
+15509008,Nadia,Haimoudat,9294273953,Generation Next Fertility,success,0,2025-12-26 07:56:26

@@ -11,6 +11,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+recording
+*.mp4
 
 # Virtual environments
 venv/

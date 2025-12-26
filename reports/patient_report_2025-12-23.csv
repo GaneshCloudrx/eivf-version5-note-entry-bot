@@ -1,0 +1,9 @@
+note_id,patient_first_name,patient_last_name,patient_phone,clinic_name,status,failure_count,last_attempt_time
+15488966,Mounika,Bandaru,4045284038,Reproductive Biology Associates,success,0,2025-12-23 07:21:31
+"15488808,15488809,15488810",Danielle,Frazier,3128563088,Reproductive Biology Associates,success,0,2025-12-23 07:33:55
+15488469,Danielle,Frazier,3128563088,Reproductive Biology Associates,success,0,2025-12-23 07:34:58
+15487965,Tram,Tran,9047035895,Reproductive Biology Associates,success,0,2025-12-23 07:36:05
+15486896,Amanda,Ballard,4049175550,Reproductive Biology Associates,success,0,2025-12-23 07:37:08
+"15484439,15484440,15484441,15484442,15484443,15484444,15484445",Stephanie,Bennett,3178286049,Reproductive Biology Associates,success,0,2025-12-23 07:38:12
+15483738,Elizabeth,Chesser,7063510833,Reproductive Biology Associates,success,0,2025-12-23 07:39:33
+15483491,Stephanie,Bennett,3178286049,Reproductive Biology Associates,success,0,2025-12-23 07:40:59

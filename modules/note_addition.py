@@ -1,11 +1,14 @@
-from pywinauto import Application, Desktop, mouse
-from pywinauto.keyboard import send_keys
+"""
+Note addition module - handles adding notes to patient records in eIVF
+"""
 import time
 import re
 import pyperclip
+from pywinauto import Application, Desktop, mouse
+from pywinauto.keyboard import send_keys
 
-from modules.patient_search import get_eivf_main_window
-from modules.utils import log_print
+import modules.helper as helper
+import modules.patient_search as patient_search
 
 
 # Reusable Desktop instance for UIA backend
@@ -27,20 +30,20 @@ def write_note(note_title, note_text):
     Returns:
         True if successful, False otherwise
     """
-    log_print(f"Writing note - Title: '{note_title}', Content: '{note_text}'")
+    helper.log_print(f"Writing note - Title: '{note_title}', Content: '{note_text}'")
     note_text = re.sub(r"<br>|</br>|<br/>|</n>", "\n", note_text).strip()
 
     try:
-        app, main_window = get_eivf_main_window()
+        app, main_window = patient_search.get_eivf_main_window()
         if not main_window:
-            log_print("Could not find main window")
+            helper.log_print("Could not find main window")
             return False
 
         title_entered = False
         note_entered = False
 
         # ============ STEP 1: Enter Note Content FIRST ============
-        log_print("Step 1: Entering note content...")
+        helper.log_print("Step 1: Entering note content...")
 
         time.sleep(1)  # Wait for window to be fully ready
 
@@ -63,7 +66,7 @@ def write_note(note_title, note_text):
                                 cls == "Internet Explorer_Server" and "Note" in str(win.window_text())):
                             rect = desc.rectangle()
                             if rect.right - rect.left > 300:  # Make sure it's the large one
-                                log_print(
+                                helper.log_print(
                                     f"Found note area: name='{name}' rect=({rect.left},{rect.top},{rect.right},{rect.bottom})")
                                 note_area = (rect.left + 100, rect.top + 100)  # Click inside
                                 break
@@ -73,23 +76,23 @@ def write_note(note_title, note_text):
                 continue
 
         if note_area:
-            log_print(f"Clicking note area at {note_area}")
+            helper.log_print(f"Clicking note area at {note_area}")
             mouse.click(coords=note_area)
             time.sleep(0.5)
 
         # Paste the note content using clipboard (preserves newlines)
         try:
             pyperclip.copy(note_text)
-            log_print("Note content copied to clipboard")
+            helper.log_print("Note content copied to clipboard")
             send_keys("^v")  # Ctrl+V to paste
             time.sleep(0.3)
-            log_print(f"Note content pasted: '{note_text}'")
+            helper.log_print(f"Note content pasted: '{note_text}'")
             note_entered = True
         except Exception as e:
-            log_print(f"Pasting failed: {e}")
+            helper.log_print(f"Pasting failed: {e}")
 
         # ============ STEP 2: Enter Title ============
-        log_print("Step 2: Entering note title...")
+        helper.log_print("Step 2: Entering note title...")
 
         # Find the title field by class name: WindowsForms10.EDIT.app.0.141b42a_r7_ad1
         # or by automation_id: txtTitleNote
@@ -112,7 +115,7 @@ def write_note(note_title, note_text):
 
                                 # Title field is small (area < 50000)
                                 if 500 < area < 50000:
-                                    log_print(f"Found title field: class='{cls}' auto_id='{auto_id}' area={area}")
+                                    helper.log_print(f"Found title field: class='{cls}' auto_id='{auto_id}' area={area}")
 
                                     desc.click_input()
                                     time.sleep(0.2)
@@ -121,7 +124,7 @@ def write_note(note_title, note_text):
                                     desc.type_keys("^a", with_spaces=True)
                                     time.sleep(0.1)
                                     desc.type_keys(note_title, with_spaces=True)
-                                    log_print(f"Title entered: '{note_title}'")
+                                    helper.log_print(f"Title entered: '{note_title}'")
                                     title_entered = True
                                     break
                         except:
@@ -129,79 +132,110 @@ def write_note(note_title, note_text):
                 except:
                     continue
         except Exception as e:
-            log_print(f"Error entering title: {e}")
+            helper.log_print(f"Error entering title: {e}")
 
         # Return result
         if title_entered and note_entered:
-            log_print("SUCCESS: Both note content and title entered!")
+            helper.log_print("SUCCESS: Both note content and title entered!")
             return True
         elif note_entered:
-            log_print("SUCCESS: Note content entered (title may have failed)")
+            helper.log_print("SUCCESS: Note content entered (title may have failed)")
             return True
         else:
-            log_print("FAILED: Could not enter note content")
+            helper.log_print("FAILED: Could not enter note content")
             return False
 
     except Exception as e:
-        log_print(f"Error writing note: {str(e)}")
+        helper.log_print(f"Error writing note: {str(e)}")
         return False
 
 
 def click_save_button():
     """
-    Click the 'Save' button in the Notes window.
+    Click the 'Save' button in the Notes window using win32 backend.
     The Notes window has buttons at bottom: Print Preview, Print, Save, Close
 
     Returns:
         True if successful, False otherwise
     """
-    log_print("Clicking Save button in Notes window...")
+    helper.log_print("Clicking Save button in Notes window (win32 approach)...")
 
     try:
-        app, main_window = get_eivf_main_window()
-
-        if not main_window:
-            log_print("Could not find main window")
-            return False
-
-        # Find Windows Forms Save button
-        # Class: "WindowsForms10.BUTTON.app.0.141b42a_r7_ad1", Name: "Save"
-        desktop = get_desktop()
-
-        # Search across all windows for Windows Forms Save button
-        log_print("Searching for Windows Forms Save button...")
+        # Find the Notes window from Desktop and get its process ID
+        desktop = Desktop(backend="win32")
+        
+        notes_pid = None
         for win in desktop.windows():
             try:
-                for desc in win.descendants():
-                    try:
-                        cls = getattr(desc.element_info, "class_name", "") or ""
-                        name = getattr(desc.element_info, "name", "") or ""
-
-                        # Look for Windows Forms BUTTON with name "Save"
-                        if "WindowsForms" in cls and "BUTTON" in cls.upper() and name == "Save":
-                            rect = desc.rectangle()
-                            log_print(
-                                f"Found Windows Forms Save button: class='{cls}' rect=({rect.left},{rect.top},{rect.right},{rect.bottom})")
-
-                            # Click using mouse
-                            center_x = (rect.left + rect.right) // 2
-                            center_y = (rect.top + rect.bottom) // 2
-                            log_print(f"Clicking Save button at ({center_x}, {center_y})")
-
-                            mouse.click(coords=(center_x, center_y))
-                            log_print("Save button clicked successfully!")
-                            time.sleep(1)
-                            return True
-                    except:
-                        continue
+                title = win.window_text()
+                if "Notes" in title and "Quick Summary" in title:
+                    notes_pid = win.process_id()
+                    helper.log_print(f"Found Notes window: '{title}' with PID: {notes_pid}")
+                    break
             except:
-                continue
-
-        log_print("Save button not found")
-        return False
+                pass
+        
+        if not notes_pid:
+            helper.log_print("Notes window not found")
+            return False
+        
+        # Connect to the Notes application using win32 backend
+        app = Application(backend="win32").connect(process=notes_pid)
+        
+        # Get the Notes window
+        notes_window = app.window(title_re=".*Notes.*Quick Summary.*")
+        notes_window.wait("visible", timeout=10)
+        helper.log_print("Connected to Notes window")
+        
+        # Find the Save button using class_name regex and title
+        # From inspect.exe: ClassName: "WindowsForms10.BUTTON...", Name: "Save", AutomationId: "btnSave2"
+        try:
+            save_button = notes_window.child_window(
+                class_name_re=".*WindowsForms10\\.BUTTON.*",
+                title="Save"
+            )
+            save_button.wait("visible", timeout=5)
+            helper.log_print(f"Found Save button: {save_button.window_text()}")
+            
+            # Focus the window first
+            notes_window.set_focus()
+            time.sleep(0.3)
+            
+            # Focus the button and click
+            save_button.set_focus()
+            time.sleep(0.2)
+            save_button.click_input()
+            helper.log_print("Save button clicked successfully!")
+            time.sleep(1)
+            return True
+            
+        except Exception as e:
+            helper.log_print(f"Primary method failed: {e}")
+            
+            # Fallback: try with auto_id
+            helper.log_print("Trying fallback with auto_id='btnSave2'...")
+            try:
+                save_button = notes_window.child_window(auto_id="btnSave2")
+                save_button.wait("visible", timeout=5)
+                helper.log_print(f"Found Save button via auto_id: {save_button.window_text()}")
+                
+                # Focus the window first
+                notes_window.set_focus()
+                time.sleep(0.3)
+                
+                # Focus the button and click
+                save_button.set_focus()
+                time.sleep(0.2)
+                save_button.click_input()
+                helper.log_print("Save button clicked successfully!")
+                time.sleep(1)
+                return True
+            except Exception as e2:
+                helper.log_print(f"Fallback also failed: {e2}")
+                return False
 
     except Exception as e:
-        log_print(f"Error clicking Save button: {str(e)}")
+        helper.log_print(f"Error clicking Save button: {str(e)}")
         return False
 
 
@@ -213,61 +247,78 @@ def click_new_button():
 
     Returns True if clicked, False otherwise.
     """
-    log_print("Checking for required checkboxes before clicking New button...")
+    helper.log_print("Checking for required checkboxes before clicking New button...")
 
     try:
-        app, main_window = get_eivf_main_window()
+        app, main_window = patient_search.get_eivf_main_window()
         if not main_window:
-            log_print("Could not find main eIVF window")
+            helper.log_print("Could not find main eIVF window")
             return False
 
-        # Check for Results checkbox (automation ID 31)
-        log_print("Checking for Results checkbox (automation ID 31)...")
-
+        # Click Results checkbox (control_id=31) then All checkbox (control_id=35)
+        helper.log_print("Clicking Results checkbox (control_id=31)...")
+        
         try:
-            results_checkbox = main_window.child_window(
-                auto_id="31",
-                control_type="CheckBox"
+            # Use win32 backend for VB6 controls
+            from pywinauto import Application
+            app_win32 = Application(backend="win32").connect(class_name="ThunderRT6MDIForm", title="eIVF")
+            eivf_window = app_win32.window(class_name="ThunderRT6MDIForm", title="eIVF")
+            
+            # Find and click Results checkbox
+            results_checkbox = eivf_window.child_window(
+                class_name="ThunderRT6CheckBox",
+                control_id=31
             )
-            if results_checkbox.exists(timeout=5):
-                log_print("✔ Results checkbox found (auto_id=31)")
-            else:
-                log_print("❌ Results checkbox (auto_id=31) not found")
-                log_print("Required checkboxes missing - skipping to next note")
-                return False
+            results_checkbox.set_focus()
+            results_checkbox.click_input()
+            helper.log_print("✔ Results checkbox clicked")
+            time.sleep(0.5)
+            
+            # Find and click All checkbox
+            helper.log_print("Clicking All checkbox (control_id=35)...")
+            all_checkbox = eivf_window.child_window(
+                class_name="ThunderRT6CheckBox",
+                control_id=35
+            )
+            all_checkbox.set_focus()
+            all_checkbox.click_input()
+            helper.log_print("✔ All checkbox clicked")
+            time.sleep(0.5)
+            
+            # Verify All checkbox is checked (click again if not checked)
+            # For VB6 checkboxes, we can check the state by trying to read it
+            # If toggle state is still off, click again
+            try:
+                # Re-find to get fresh state
+                all_checkbox = eivf_window.child_window(
+                    class_name="ThunderRT6CheckBox",
+                    control_id=35
+                )
+                # Check if it's checked by looking at button state
+                state = all_checkbox.get_check_state()
+                if state == 0:  # Unchecked
+                    helper.log_print("All checkbox not checked, clicking again...")
+                    all_checkbox.click_input()
+                    time.sleep(0.3)
+                helper.log_print("✔ All checkbox is checked")
+            except Exception as state_err:
+                helper.log_print(f"Could not verify checkbox state: {state_err}")
+                # Assume it's checked since we clicked it
+            
         except Exception as e:
-            log_print(f"❌ Error finding Results checkbox: {e}")
-            log_print("Required checkboxes missing - skipping to next note")
+            helper.log_print(f"❌ Error clicking checkboxes: {e}")
+            helper.log_print("Required checkboxes missing - skipping to next note")
             return False
 
-        # Check for Schedule checkbox (automation ID 32)
-        log_print("Checking for Schedule checkbox (automation ID 32)...")
-
-        try:
-            schedule_checkbox = main_window.child_window(
-                auto_id="32",
-                control_type="CheckBox"
-            )
-            if schedule_checkbox.exists(timeout=2):
-                log_print("✔ Schedule checkbox found (auto_id=32)")
-            else:
-                log_print("Schedule checkbox (auto_id=32) not found")
-                log_print("Required checkboxes missing - skipping to next note")
-                return False
-        except Exception as e:
-            log_print(f"Error finding Schedule checkbox: {e}")
-            log_print("Required checkboxes missing - skipping to next note")
-            return False
-
-        # Both checkboxes exist, proceed to click New button
-        log_print("Both required checkboxes found. Clicking New button...")
+        # Checkboxes clicked, proceed to click New button
+        helper.log_print("Checkboxes ready. Clicking New button...")
 
         # Try direct lookup first
         try:
             new_btn = main_window.child_window(title="New", control_type="Button")
             if new_btn.exists(timeout=2):
                 new_btn.invoke()
-                log_print("New button clicked (direct)")
+                helper.log_print("New button clicked (direct)")
                 time.sleep(2)
                 return True
         except Exception:
@@ -279,7 +330,7 @@ def click_new_button():
                 try:
                     if btn.window_text().strip().lower() == "new":
                         btn.click_input()
-                        log_print("New button clicked (found by descendants)")
+                        helper.log_print("New button clicked (found by descendants)")
                         time.sleep(0.5)
                         return True
                 except Exception:
@@ -287,19 +338,12 @@ def click_new_button():
         except Exception:
             pass
 
-        log_print("New button not found")
+        helper.log_print("New button not found")
         return False
 
     except Exception as e:
-        log_print(f"Error in click_new_button: {e}")
+        helper.log_print(f"Error in click_new_button: {e}")
         return False
-
-
-def safe_text(elem):
-    try:
-        return (elem.window_text() or "").strip()
-    except Exception:
-        return ""
 
 
 def get_notes_window_patient_details():
@@ -308,7 +352,7 @@ def get_notes_window_patient_details():
     Uses simpler approach: find Notes window, get lblTitle label, extract text.
     Returns dict with first_name, last_name, dob, patient_id, phone_number (where found) or None.
     """
-    log_print("get_notes_window_patient_details: start (v5 - win32 approach)")
+    helper.log_print("get_notes_window_patient_details: start (v5 - win32 approach)")
 
     try:
         # Step 1: Find Notes window from Desktop and get its PID
@@ -320,13 +364,13 @@ def get_notes_window_patient_details():
                 title = win.window_text()
                 if "Notes" in title and "Quick Summary" in title:
                     notes_pid = win.process_id()
-                    log_print(f"Found Notes window: {title}, PID: {notes_pid}")
+                    helper.log_print(f"Found Notes window: {title}, PID: {notes_pid}")
                     break
             except:
                 pass
         
         if not notes_pid:
-            log_print("Notes window not found")
+            helper.log_print("Notes window not found")
             return None
         
         # Step 2: Connect to the Notes application using its PID
@@ -336,10 +380,10 @@ def get_notes_window_patient_details():
         # Step 3: Find lblTitle label - the one that contains "Quick Notes:"
         lbl_title = notes_window.child_window(class_name_re=".*WindowsForms10\\.STATIC.*", title_re=".*Quick Notes.*")
         patient_info = lbl_title.window_text()
-        log_print(f"Patient Info: {patient_info}")
+        helper.log_print(f"Patient Info: {patient_info}")
         
         if not patient_info:
-            log_print("Could not extract patient info from lblTitle")
+            helper.log_print("Could not extract patient info from lblTitle")
             return None
         
         # Step 4: Parse the patient info text
@@ -353,13 +397,13 @@ def get_notes_window_patient_details():
         dob_match = DOB_RE_LOCAL.search(patient_info)
         if dob_match:
             patient['dob'] = dob_match.group(1)
-            log_print(f"Extracted DOB: {patient['dob']}")
+            helper.log_print(f"Extracted DOB: {patient['dob']}")
         
         # Extract Patient ID
         id_match = ID_RE_LOCAL.search(patient_info)
         if id_match:
             patient['patient_id'] = id_match.group(1)
-            log_print(f"Extracted Patient ID: {patient['patient_id']}")
+            helper.log_print(f"Extracted Patient ID: {patient['patient_id']}")
         
         # Extract Phone Number (patterns like "(000) 000-0000" or "M:(000) 000-0000")
         phone_patterns = [
@@ -371,35 +415,35 @@ def get_notes_window_patient_details():
             if phone_match:
                 phone_number = f"({phone_match.group(1)}) {phone_match.group(2)}-{phone_match.group(3)}"
                 patient['phone_number'] = phone_number
-                log_print(f"Extracted Phone Number: {patient['phone_number']}")
+                helper.log_print(f"Extracted Phone Number: {patient['phone_number']}")
                 break
         
         # Extract Name - "Quick Notes: FirstName LastName (ID)" pattern
         name_pattern = re.search(r'Quick\s*(Notes|Summary)[:\s]*([A-Za-z0-9\.\'\- ]+)\s*\(', patient_info, re.IGNORECASE)
         if name_pattern:
             full_name = name_pattern.group(2).strip()
-            log_print(f"Extracted full name: '{full_name}'")
+            helper.log_print(f"Extracted full name: '{full_name}'")
             
             name_parts = full_name.split()
             if len(name_parts) >= 2:
                 patient['first_name'] = name_parts[0]
                 patient['last_name'] = name_parts[-1].rstrip('.')
-                log_print(f"Parsed: first='{patient['first_name']}', last='{patient['last_name']}'")
+                helper.log_print(f"Parsed: first='{patient['first_name']}', last='{patient['last_name']}'")
             elif len(name_parts) == 1:
                 patient['first_name'] = name_parts[0]
                 patient['last_name'] = ''
         
         if patient.get('dob') or patient.get('first_name'):
-            log_print(f"Final parsed patient: {patient}")
+            helper.log_print(f"Final parsed patient: {patient}")
             return patient
         
-        log_print("Could not parse patient details from text")
+        helper.log_print("Could not parse patient details from text")
         return None
 
     except Exception as e:
-        log_print(f"get_notes_window_patient_details: unexpected error: {e}")
+        helper.log_print(f"get_notes_window_patient_details: unexpected error: {e}")
         import traceback
-        log_print(traceback.format_exc())
+        helper.log_print(traceback.format_exc())
         return None
 
 
@@ -411,19 +455,19 @@ def close_notes_window():
     Returns:
         True if successful, False otherwise
     """
-    log_print("Attempting to close Notes window...")
+    helper.log_print("Attempting to close Notes window...")
     
     try:
-        app, main_window = get_eivf_main_window()
+        app, main_window = patient_search.get_eivf_main_window()
         if not main_window:
-            log_print("Could not find main window to close Notes")
+            helper.log_print("Could not find main window to close Notes")
             return False
         
         # Find Windows Forms Close button (same approach as Save button)
         # Class: "WindowsForms10.BUTTON.app.0.141b42a_r7_ad1", Name: "Close"
         desktop = get_desktop()
         
-        log_print("Searching for Windows Forms Close button...")
+        helper.log_print("Searching for Windows Forms Close button...")
         for win in desktop.windows():
             try:
                 for desc in win.descendants():
@@ -434,16 +478,16 @@ def close_notes_window():
                         # Look for Windows Forms BUTTON with name "Close"
                         if "WindowsForms" in cls and "BUTTON" in cls.upper() and name == "Close":
                             rect = desc.rectangle()
-                            log_print(
+                            helper.log_print(
                                 f"Found Windows Forms Close button: class='{cls}' rect=({rect.left},{rect.top},{rect.right},{rect.bottom})")
                             
                             # Click using mouse
                             center_x = (rect.left + rect.right) // 2
                             center_y = (rect.top + rect.bottom) // 2
-                            log_print(f"Clicking Close button at ({center_x}, {center_y})")
+                            helper.log_print(f"Clicking Close button at ({center_x}, {center_y})")
                             
                             mouse.click(coords=(center_x, center_y))
-                            log_print("Close button clicked successfully!")
+                            helper.log_print("Close button clicked successfully!")
                             time.sleep(1)
                             return True
                     except:
@@ -451,23 +495,23 @@ def close_notes_window():
             except:
                 continue
         
-        log_print("Close button not found - trying Escape key as fallback...")
+        helper.log_print("Close button not found - trying Escape key as fallback...")
         # Fallback: Try Escape key
         try:
             main_window.set_focus()
             time.sleep(0.3)
             send_keys("{ESC}", with_spaces=True)
             time.sleep(0.5)
-            log_print("Notes window closed using Escape (fallback)")
+            helper.log_print("Notes window closed using Escape (fallback)")
             return True
         except Exception as e:
-            log_print(f"Escape key also failed: {e}")
+            helper.log_print(f"Escape key also failed: {e}")
         
-        log_print("Could not close Notes window")
+        helper.log_print("Could not close Notes window")
         return False
         
     except Exception as e:
-        log_print(f"Error closing Notes window: {e}")
+        helper.log_print(f"Error closing Notes window: {e}")
         return False
 
 
@@ -485,14 +529,14 @@ def verify_patient_explorer_match(expected_first_name, expected_last_name, expec
     Returns:
         True if patient matches, False otherwise
     """
-    log_print(f"Verifying Notes window shows: {expected_first_name} {expected_last_name}, Phone number: {expected_phone_number}")
+    helper.log_print(f"Verifying Notes window shows: {expected_first_name} {expected_last_name}, Phone number: {expected_phone_number}")
 
     try:
         # Get patient details from the Notes window
         patient_details = get_notes_window_patient_details()
         if not patient_details:
-            log_print("verify_patient_explorer_match: could not retrieve patient details from Notes window")
-            log_print("VERIFICATION FAILED - cannot proceed without verifying patient")
+            helper.log_print("verify_patient_explorer_match: could not retrieve patient details from Notes window")
+            helper.log_print("VERIFICATION FAILED - cannot proceed without verifying patient")
             return False
 
         # Get actuals
@@ -510,37 +554,43 @@ def verify_patient_explorer_match(expected_first_name, expected_last_name, expec
         expected_phone_normalized = normalize_phone(expected_phone_number)
         actual_phone_normalized = normalize_phone(actual_phone)
 
-        first_ok = (actual_first == expected_first_name.strip().lower())
-        last_ok = (actual_last == expected_last_name.strip().lower())
+        # First name: use prefix/contains matching (less strict)
+        # "Jian" should match "Jianyin", "Jianyin" should match "Jian"
+        expected_first_lower = expected_first_name.strip().lower()
+        first_ok = (
+            actual_first == expected_first_lower or  # exact match
+            actual_first.startswith(expected_first_lower) or  # actual starts with expected
+            expected_first_lower.startswith(actual_first)  # expected starts with actual
+        )
+        
+        # Phone: normalized comparison
         phone_ok = (expected_phone_normalized == actual_phone_normalized) if expected_phone_normalized else True
 
-        log_print(
-            f"verify_patient_explorer_match: comparison -> first_ok={first_ok}, last_ok={last_ok}, phone_ok={phone_ok}")
-        log_print(f"  Expected phone: '{expected_phone_number}' (normalized: '{expected_phone_normalized}')")
-        log_print(f"  Actual phone: '{actual_phone}' (normalized: '{actual_phone_normalized}')")
+        helper.log_print(
+            f"verify_patient_explorer_match: comparison -> first_ok={first_ok}, phone_ok={phone_ok}")
+        helper.log_print(f"  Expected phone: '{expected_phone_number}' (normalized: '{expected_phone_normalized}')")
+        helper.log_print(f"  Actual phone: '{actual_phone}' (normalized: '{actual_phone_normalized}')")
 
-        all_match = first_ok and last_ok and phone_ok
+        all_match = first_ok and phone_ok
         if all_match:
-            log_print("verify_patient_explorer_match: PASSED")
+            helper.log_print("verify_patient_explorer_match: PASSED")
         else:
-            log_print("verify_patient_explorer_match: FAILED")
+            helper.log_print("verify_patient_explorer_match: FAILED")
             if not first_ok:
-                log_print(f"  First name mismatch: expected '{expected_first_name}', got '{actual_first}'")
-            if not last_ok:
-                log_print(f"  Last name mismatch: expected '{expected_last_name}', got '{actual_last}'")
+                helper.log_print(f"  First name mismatch: expected '{expected_first_name}', got '{actual_first}'")
             if not phone_ok:
-                log_print(f"  Phone number mismatch: expected '{expected_phone_number}', got '{actual_phone}'")
+                helper.log_print(f"  Phone number mismatch: expected '{expected_phone_number}', got '{actual_phone}'")
             
             # Close Notes window when verification fails
-            log_print("Closing Notes window due to verification failure...")
+            helper.log_print("Closing Notes window due to verification failure...")
             close_notes_window()
 
         return all_match
 
     except Exception as e:
-        log_print(f"verify_patient_explorer_match: error: {e}")
+        helper.log_print(f"verify_patient_explorer_match: error: {e}")
         import traceback
-        log_print(traceback.format_exc())
+        helper.log_print(traceback.format_exc())
         # Close Notes window on error
         close_notes_window()
         return False

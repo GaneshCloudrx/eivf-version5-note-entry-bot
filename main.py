@@ -1,284 +1,233 @@
 """
-Main orchestrator - coordinates all modules in sequence
-24/7 continuous automation with heartbeat and remote control (pause/resume)
+eIVF Note Entry Bot - Main Orchestrator
+24/7 continuous automation for adding patient notes
 """
 import time
-import re
-import csv
-from config import (
-    APP_PATH, TARGET_TITLE
-)
-from modules.utils import init_log_file, close_log_file, log_print
-from modules.login import kill_application, open_application, login, close_application
-from modules.configuation_change import change_configuration
-from modules.patient_search import search_patient_by_phone_number_and_first_name_ctrl_id, click_alert_ok_button
-from modules.color_addition import set_color, search_patient_by_phone_number_and_first_name
-from modules.heartbeat import HeartbeatManager
-from modules.note_addition import (click_new_button,
-    write_note, click_save_button, verify_patient_explorer_match)
-from modules.data_reader import parse_note_data, get_clinic_by_name, parse_clinic_data
+import traceback
+
+# Config
+from config import APP_PATH, TARGET_TITLE
+
+# Modules with alias imports
+import modules.helper as helper
+import modules.login as login
+import modules.configuation_change as config_change
+import modules.patient_search as patient_search
+import modules.color_addition as color
+import modules.note_addition as notes
+import modules.data_reader as data_reader
+
+# API
 from data_from_api import data_from_api, update_api
 
 
-
-def process_single_note(note_data, clinic_data, window, is_first):
-    """
-    Process a single note entry from the CSV file.
+def process_single_note(note_data, clinic_data, is_first):
+    """Process a single patient note entry"""
+    helper.log_print(f"\n{'='*60}")
+    helper.log_print(f"Processing: {note_data['patient_first_name']} {note_data['patient_last_name']}")
+    helper.log_print(f"Phone: {note_data['patient_phone']} | Clinic: {note_data['clinic_name']}")
+    helper.log_print(f"{'='*60}")
     
-    Args:
-        note_data: Parsed note data dictionary
-        clinic_data: Parsed clinic data dictionary (can be None)
-        window: The main application window
-        
-    Returns:
-        True if successful, False otherwise
-    """
-    log_print(f"\n{'='*60}")
-    log_print(f"Processing Note ID: {note_data['note_id']}")
-    log_print(f"Patient: {note_data['patient_first_name']} {note_data['patient_last_name']}")
-    log_print(f"Phone number: {note_data['patient_phone']}")
-    log_print(f"Clinic: {note_data['clinic_name']}")
-    log_print(f"{'='*60}")
+    first_name = note_data['patient_first_name']
+    last_name = note_data['patient_last_name']
+    phone = note_data['patient_phone']
     
-    try:
-        # Step 1: Search patient by Phone Number and First Name
-        patient_first_name = note_data['patient_first_name']
-        patient_phone_number = note_data['patient_phone']
-        patient_last_name = note_data['patient_last_name']
-        
-        if not patient_first_name or not patient_phone_number:
-            log_print(f"ERROR: Missing required patient data (Phone Number or First Name)")
-            return False
-        
-        log_print(f"Searching for patient: {patient_first_name}, Phone number: {patient_phone_number}")
-        if not search_patient_by_phone_number_and_first_name_ctrl_id(patient_phone_number, patient_first_name, is_first):
-            log_print(f"Patient search failed for {patient_first_name} {patient_last_name}")
-            return False
-        
-        
-        log_print(f"Patient '{patient_first_name} {patient_last_name}' selected!")
-        
-        # Step 3: Handle Alert dialog if it appears
-        time.sleep(1)  # Wait for alert to appear
-        if click_alert_ok_button():
-            log_print("Alert handled successfully!")
-        else:
-            log_print("Warning: Could not handle alert dialog (may not have appeared)")
-        
-        # Step 4: Click New button
-        time.sleep(0.5)
-        if not click_new_button():
-            log_print("Failed to click New button")
-            return False
-        
-        log_print("New button clicked!")
-        
-        # Step 5: MANDATORY - Verify patient from Notes window before writing
-        time.sleep(1)  # Wait for Notes window to load
-        log_print("Verifying patient in Notes window (MANDATORY)...")
-        if not verify_patient_explorer_match(patient_first_name, patient_last_name, patient_phone_number):
-            log_print("ERROR: Patient verification from Notes window FAILED. Skipping this note...")
-            return False
-        
-        log_print("Patient verification PASSED!")
-        
-        # Step 6: Extract note title and content
-        time.sleep(0.5)
-
-        note_title = "CLOUDRX NOTIFICATION"
-        note_content = note_data['note']
-
-        log_print(f"Writing note - Title: '{note_title}', Content: '{note_content}'")
-        
-        if not write_note(note_title, note_content):
-            log_print("Failed to write note")
-            return False
-        
-        log_print("Note (title + content) written successfully!")
-        
-        # Step 7: Click Save button (wait 5 sec for note to be entered)
-        log_print("Waiting 5 seconds before saving...")
-        time.sleep(5)
-        
-        if not click_save_button():
-            log_print("Failed to save note")
-            return False
-        
-        log_print("Note saved successfully!")
-        
-        # Step 8: Set color of the note (if clinic data available)
-        if clinic_data and clinic_data.get('color'):
-            color = clinic_data['color']
-            log_print(f"Setting note color to: {color}")
-            set_color(color)
-        else:
-            # Default color if clinic not found
-            log_print("Setting default note color: orange")
-            set_color("orange")
-        
-        log_print(f"SUCCESS: Note processed successfully for {patient_first_name} {patient_last_name}")
-        
-        return True
-        
-    except Exception as e:
-        log_print(f"ERROR processing note: {str(e)}")
-        import traceback
-        log_print(f"Traceback: {traceback.format_exc()}")
+    # Validate required fields
+    if not first_name or not phone:
+        helper.log_print("ERROR: Missing patient first name or phone")
         return False
+    
+    # Step 1: Search patient
+    if not patient_search.search_patient_by_phone_number_and_first_name_ctrl_id(phone, first_name, is_first):
+        helper.log_print(f"Patient search failed for {first_name} {last_name}")
+        return False
+    helper.log_print(f"Patient '{first_name} {last_name}' found!")
+    
+    # Step 2: Handle alert dialog
+    time.sleep(1)
+    if patient_search.click_alert_ok_button():
+        helper.log_print("Alert handled")
+    
+    # Step 4: Click New button
+    time.sleep(0.5)
+    if not notes.click_new_button():
+        helper.log_print("Failed to click New button")
+        return False
+    
+    # Step 5: Verify patient in Notes window
+    time.sleep(1)
+    if not notes.verify_patient_explorer_match(first_name, last_name, phone):
+        helper.log_print("ERROR: Patient verification FAILED")
+        raise Exception("patient_verification_failed")
+    helper.log_print("Patient verified!")
+    
+    # Step 6: Write note
+    time.sleep(0.5)
+    if not notes.write_note("CLOUDRX NOTIFICATION", note_data['note']):
+        helper.log_print("Failed to write note")
+        return False
+    
+    # Step 7: Save note
+    helper.log_print("Waiting 5 seconds before saving...")
+    time.sleep(5)
+    if not notes.click_save_button():
+        helper.log_print("Failed to save note")
+        return False
+    helper.log_print("Note saved!")
+    
+    # Step 8: Set color
+    note_color = clinic_data.get('color', 'orange') if clinic_data else 'orange'
+    color.set_color(note_color)
+    
+    helper.log_print(f"SUCCESS: Note processed for {first_name} {last_name}")
+    return True
+
+
+def process_clinic(clinic, clinic_notes, patient_report):
+    """Process all notes for a single clinic"""
+    helper.log_print(f"\n{'#'*60}")
+    helper.log_print(f"CLINIC: {clinic['Clinic_Name']} ({len(clinic_notes)} notes)")
+    helper.log_print(f"{'#'*60}")
+    
+    # Open and configure application
+    app, window = login.open_application(APP_PATH, TARGET_TITLE)
+    if not app or not window:
+        helper.log_print("Failed to open application")
+        raise Exception("Login Issue")
+    
+    # Change configuration
+    if not config_change.change_configuration(window, clinic['URL'], clinic['Facility']):
+        helper.log_print("Configuration failed")
+        login.close_application(window)
+        return 0, 0
+    
+    # Restart and login
+    login.kill_application("eIVF.exe")
+    app, window = login.open_application(APP_PATH, TARGET_TITLE)
+    
+    if not login.login(window, clinic['Username'], clinic['Password1'], 
+                       clinic['clinic_name_sf'], clinic['URL']):
+        helper.log_print("Login failed")
+        login.close_application(window)
+        return 0, 0
+    helper.log_print("Login successful!")
+    
+    # Process each note
+    success_count = 0
+    fail_count = 0
+    is_first = True
+    
+    for idx, note in clinic_notes.iterrows():
+        try:
+            helper.check_and_wait_if_paused()
+            note_data = data_reader.parse_note_data(note)
+            clinic_data = data_reader.parse_clinic_data(clinic)
+            
+            if process_single_note(note_data, clinic_data, is_first):
+                success_count += 1
+                helper.save_patient_to_report(note_data, 'success', 0)
+                
+                # Update API
+                update_api(note_data['note_id'])
+            else:
+                fail_count += 1
+            
+            is_first = False
+            time.sleep(3)
+            
+        except Exception as e:
+            if "patient_verification_failed" in str(e):
+                # Track verification failures
+                key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}"
+                current_failures = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
+                helper.save_patient_to_report(note_data, 'verification_failed', current_failures)
+                patient_report[key] = {'failure_count': str(current_failures), 'status': 'verification_failed'}
+                
+                helper.log_print(f"Verification failed ({current_failures}/{helper.MAX_FAILURES})")
+                fail_count += 1
+            else:
+                helper.log_print(f"ERROR: {str(e)}")
+                break
+    
+    return success_count, fail_count
+
 
 def main():
-    """Main function - processes all notes from test_notes.csv"""
-    # Initialize log file (uses date-based naming if LOG_FILE_PATH is None)
-    # Pass None to use date-based filename, or pass LOG_FILE_PATH to use custom path
-    init_log_file(None)  # None = use date-based filename (log_YYYY-MM-DD.txt)
-
-    # Initialize and start heartbeat manager
-    # heartbeat_api_url = API_BASE_URL + "rpa_get_bot_status.php"
-    # heartbeat_manager = HeartbeatManager(
-    #     api_url=heartbeat_api_url,
-    #     auth_header=API_AUTH_HEADER,
-    #     server_name=API_SERVER_NAME,
-    #     bot_name=API_BOT_NAME,
-    #     interval=HEARTBEAT_INTERVAL,
-    #     timeout=API_TIMEOUT
-    # )
-    # heartbeat_manager.start()
-
-    log_print("=== Automation started ===")
-    is_continue = True
-    while is_continue:
+    """Main entry point - continuous automation loop"""
+    # Initialize
+    helper.init_log_file(None)
+    helper.init_heartbeat()
+    helper.start_recording(output_dir="recordings", fps=5, quality="medium")
+    helper.log_print("=== eIVF Note Bot Started ===")
+    
+    # Set screen resolution
+    helper.get_and_log_screen_resolution("Before")
+    if helper.set_screen_resolution(1920, 1080):
+        helper.get_and_log_screen_resolution("After")
+    
+    running = True
+    while running:
         try:
-            # Step 1: Read all notes from CSV
-            clinics, notes = data_from_api()
-            if clinics is None and notes is None:
-                log_print("Failed to fetch clinics or notes. Exiting...")
+            # Fetch data from API
+            helper.check_and_wait_if_paused()
+            clinics, all_notes = data_from_api()
+            if clinics is None or all_notes is None:
                 raise Exception("No Data Found")
-
-            log_print(f"Found {len(clinics)} clinics and {len(notes)} notes")
-            for idx, clinic in clinics.iterrows():
-
-                log_print(f"Clinic: {clinic['Clinic_Name']}")
-                clinic_notes = notes[notes['clinic_name'] == clinic['Clinic_Name']].reset_index(drop=True)
-                log_print(f"Notes: {len(clinic_notes)}")
-                if len(clinic_notes) < 1:
+            
+            helper.log_print(f"Fetched {len(clinics)} clinics, {len(all_notes)} notes")
+            
+            # Filter already processed patients
+            patient_report = helper.load_patient_report()
+            notes_to_process, skipped = helper.filter_notes_by_report(all_notes, patient_report)
+            
+            if skipped:
+                helper.log_print(f"Skipping {len(skipped)} already processed patients")
+            
+            if len(notes_to_process) == 0:
+                helper.log_print("No new notes to process")
+                raise Exception("No Data Found")
+            
+            helper.log_print(f"Processing {len(notes_to_process)} notes")
+            
+            # Process each clinic
+            total_success = 0
+            total_fail = 0
+            
+            for _, clinic in clinics.iterrows():
+                clinic_notes = notes_to_process[
+                    notes_to_process['clinic_name'] == clinic['Clinic_Name']
+                ].reset_index(drop=True)
+                
+                if len(clinic_notes) == 0:
                     continue
-                # Step 2: Open application (execute once before main loop)
-                #check_and_wait_if_paused(heartbeat_manager)
-                app, window = open_application(APP_PATH, TARGET_TITLE)
-                if not app or not window:
-                    log_print("Failed to open application. Exiting...")
-                    raise Exception("Login Issue")
-                    return
-                # Step 3: Change configuration (execute once after application opens)
-                # check_and_wait_if_paused(heartbeat_manager)
-                log_print("Configuring application settings...")
-                config_success = change_configuration(
-                    window=window,
-                    http_address=clinic['URL'],
-                    facility_name=clinic['Facility']
-                )
-                if not config_success:
-                    log_print("Login failed. Exiting...")
-                    close_application(window)
-                    return
-                kill_application("eIVF.exe")
-                app, window = open_application(APP_PATH, TARGET_TITLE)
-                # Step 4: Login (execute once after configuration)
-                #check_and_wait_if_paused(heartbeat_manager)
-                if not login(window, clinic['Username'], clinic['Password1'], clinic['clinic_name_sf'], clinic['URL']):
-                    log_print("Login failed. Exiting...")
-                    close_application(window)
-                    return
-                log_print("Login successful!")
-                # Step 5: Process each note from CSV
-                successful_count = 0
-                failed_count = 0
-                is_first = True
-                for idx, note in clinic_notes.iterrows():
-                    try:
-                        log_print(f"\n{'#'*60}")
-                        log_print(f"Processing note {idx} of {len(clinic_notes)}")
-                        log_print(f"{'#'*60}")
-                        
-                        # PaRobyn
-                        note_data = parse_note_data(note)
-                        
-                        # Find matching clinic
-                        clinic_name = note_data['clinic_name']
-                        clinic_data = parse_clinic_data(clinic)
-                        
-                        if not clinic_data:
-                            log_print(f"WARNING: Clinic '{clinic_name}' not found in clinic_details.csv")
-                            log_print("Will use default settings for this note")
-                        
-                        # Process the note
-                        success = process_single_note(note_data, clinic_data, window, is_first)
-                        
-                        if success:
-                            successful_count += 1
-                            log_print(f"✓ Note {idx} processed successfully")
-                            #Update API
-                            log_print(f"API DATA: 4. Fetching token for admin")
-                            update_api(note_data['note_id'])
-                            
-                        else:
-                            failed_count += 1
-                            log_print(f"✗ Note {idx} failed to process")
-                        
-                        # Wait between notes (except for the last one)
-                        if idx < len(notes):
-                            if is_first:
-                                is_first = False
-                            log_print("Waiting 3 seconds before processing next note...")
-                            time.sleep(3)
-                    except Exception as e:
-                        log_print(f"ERROR processing note: for clinic {clinic['Clinic_Name']} and note {idx}: {idx+1} of {len(note['patient_first_name'])}:{str(e)}")
-                        log_print(f"Continuing with next patient ...")
-                        break
-
-                    # Summary
-                    log_print(f"\n{'='*60}")
-                    log_print("PROCESSING SUMMARY")
-                    log_print(f"{'='*60}")
-                    log_print(f"Total notes: {len(notes)}")
-                    log_print(f"Successful: {successful_count}")
-                    log_print(f"Failed: {failed_count}")
-                    log_print(f"{'='*60}")
-
+                
+                success, fail = process_clinic(clinic, clinic_notes, patient_report)
+                total_success += success
+                total_fail += fail
+            
+            # Summary
+            helper.log_print(f"\n{'='*60}")
+            helper.log_print(f"SESSION SUMMARY: {total_success} success, {total_fail} failed")
+            helper.log_print(f"{'='*60}")
+            
         except KeyboardInterrupt:
-            log_print("\n=== Automation stopped by user ===")
-            is_continue = False
+            helper.log_print("\n=== Bot stopped by user ===")
+            helper.stop_recording()
+            running = False
+            
         except Exception as e:
-            log_print(f"An error occurred: {str(e)}")
-            import traceback
-            log_print(f"Traceback: {traceback.format_exc()}")
+            helper.stop_recording()
+            helper.log_print(f"Error: {str(e)}")
+            helper.log_print(traceback.format_exc())
             
             if "No Data" in str(e):
-                log_print("\n=== Waiting for 30 secs ===")
+                helper.log_print("Waiting 30 seconds...")
                 time.sleep(30)
-                is_continue = True
-
             elif "Login Issue" in str(e):
-                log_print("\n=== Login Issue Detected. Retrying to login ===")
-                is_continue = True
-
+                helper.log_print("Retrying login...")
             else:
-                is_continue = False
+                running = False
 
-def wait_for_activation(heartbeat_manager):
-    """
-    Wait until bot is activated by server.
-    Checks every 5 seconds if bot should resume.
-    """
-    log_print("Bot paused by server. Waiting for activation...")
-    while not heartbeat_manager.is_bot_active():
-        time.sleep(5)  # Check every 5 seconds
-    log_print("Bot activated by server. Resuming automation...")
-
-def check_and_wait_if_paused(heartbeat_manager):
-    """Check if bot is paused, and wait if it is"""
-    if not heartbeat_manager.is_bot_active():
-        wait_for_activation(heartbeat_manager)
 
 if __name__ == "__main__":
     main()

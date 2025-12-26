@@ -2,18 +2,11 @@
 API Integration Module for ReuniteRx Portal
 Handles clinic details, patient notes retrieval, and note verification updates.
 """
-
-import requests
 import json
 import requests
-import json
 import config
 
-# Handle imports for both standalone and module usage
-try:
-    from modules.utils import log_print
-except ImportError:
-    from utils import log_print
+import modules.helper as helper
 
 
 # API Configuration
@@ -39,20 +32,20 @@ def get_clinic_details():
     }
     
     try:
-        log_print(f"Fetching clinic details from: {url}")
+        helper.log_print(f"Fetching clinic details from: {url}")
         response = requests.post(url, headers=headers, data={}, files={})
         response.raise_for_status()
         
         result = response.json()
-        log_print(f"Successfully retrieved clinic details")
+        helper.log_print(f"Successfully retrieved clinic details")
         return result
         
     except requests.exceptions.RequestException as e:
-        log_print(f"Error fetching clinic details: {str(e)}")
+        helper.log_print(f"Error fetching clinic details: {str(e)}")
         return None
     except json.JSONDecodeError as e:
-        log_print(f"Error parsing clinic details response: {str(e)}")
-        log_print(f"Raw response: {response.text}")
+        helper.log_print(f"Error parsing clinic details response: {str(e)}")
+        helper.log_print(f"Raw response: {response.text}")
         return None
 
 def get_login_token(api_base_url, admin_email, admin_password):
@@ -90,17 +83,17 @@ def get_login_token(api_base_url, admin_email, admin_password):
             }
         else:
             # Log failed login response
-            log_print(f"Login failed. Response: {json.dumps(result, indent=2)}")
+            helper.log_print(f"Login failed. Response: {json.dumps(result, indent=2)}")
             return False, {}
             
     except requests.exceptions.RequestException as e:
-        log_print(f"Login request failed: {str(e)}")
+        helper.log_print(f"Login request failed: {str(e)}")
         return False, {}
     except json.JSONDecodeError as e:
-        log_print(f"Failed to parse login response: {str(e)}")
+        helper.log_print(f"Failed to parse login response: {str(e)}")
         return False, {}
     except Exception as e:
-        log_print(f"Login error: {str(e)}")
+        helper.log_print(f"Login error: {str(e)}")
         return False, {}
 
 def get_emr_notes(url, login_data):
@@ -126,8 +119,8 @@ def get_emr_notes(url, login_data):
         try:
             result = response.json()
         except json.JSONDecodeError as e:
-            log_print(f"Failed to parse get notes response: {str(e)}")
-            log_print(f"Response text: {response.text[:500]}")  # Log first 500 chars of response
+            helper.log_print(f"Failed to parse get notes response: {str(e)}")
+            helper.log_print(f"Response text: {response.text[:500]}")  # Log first 500 chars of response
             return False, {}
         
         # Check if request was successful
@@ -135,14 +128,14 @@ def get_emr_notes(url, login_data):
             return True, result
         else:
             # Log failed response
-            log_print(f"Get notes failed. Response: {json.dumps(result, indent=2)}")
+            helper.log_print(f"Get notes failed. Response: {json.dumps(result, indent=2)}")
             return False, {}
             
     except requests.exceptions.RequestException as e:
-        log_print(f"Get notes request failed: {str(e)}")
+        helper.log_print(f"Get notes request failed: {str(e)}")
         return False, {}
     except Exception as e:
-        log_print(f"Get notes error: {str(e)}")
+        helper.log_print(f"Get notes error: {str(e)}")
         return False, {}
 
 def update_note_status(login_data, note_id):
@@ -182,27 +175,27 @@ def update_note_status(login_data, note_id):
         try:
             result = response.json()
         except json.JSONDecodeError as e:
-            log_print(f"Failed to parse update note response: {str(e)}")
-            log_print(f"Response text: {response.text[:500]}")
+            helper.log_print(f"Failed to parse update note response: {str(e)}")
+            helper.log_print(f"Response text: {response.text[:500]}")
             return False, {}
         
         # Check if response code is 401 (token expired/invalid)
         if result.get("code") == 401:
-            log_print("Update note failed: Token expired or invalid (code: 401)")
+            helper.log_print("Update note failed: Token expired or invalid (code: 401)")
             return False, {"needs_token_refresh": True}
         
         # Check if request was successful
         if result.get("status") == "Success":
             return True, result
         else:
-            log_print(f"Update note failed. Response: {json.dumps(result, indent=2)}")
+            helper.log_print(f"Update note failed. Response: {json.dumps(result, indent=2)}")
             return False, {}
             
     except requests.exceptions.RequestException as e:
-        log_print(f"Update note request failed: {str(e)}")
+        helper.log_print(f"Update note request failed: {str(e)}")
         return False, {}
     except Exception as e:
-        log_print(f"Update note error: {str(e)}")
+        helper.log_print(f"Update note error: {str(e)}")
         return False, {}
 
 # Example usage and testing
