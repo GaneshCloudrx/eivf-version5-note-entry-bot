@@ -113,7 +113,7 @@ def process_clinic(clinic, clinic_notes, patient_report):
     app, window = login.open_application(APP_PATH, TARGET_TITLE)
     
     if not login.login(window, clinic['Username'], clinic['Password1'], 
-                       clinic['clinic_name_sf'], clinic['URL']):
+                       clinic['clinic_name_sf'], clinic['URL'], clinic['login_status']):
         helper.log_print("Login failed")
         login.close_application(window)
         return 0, 0
@@ -186,6 +186,7 @@ def main():
     """Main entry point - continuous automation loop"""
     # Initialize
     helper.init_log_file(None)
+    helper.init_log_queue_manager()
     helper.init_heartbeat()
     helper.start_recording(output_dir="recordings", fps=5, quality="medium")
     helper.log_print("=== eIVF Note Bot Started ===")

@@ -42,3 +42,7 @@ note_id,patient_first_name,patient_last_name,patient_phone,clinic_name,status,fa
 "15521752,15521753",Melissa,Jeng,6789086447,Generation Next Fertility,success,0,2025-12-30 00:13:15
 15520945,Rebecca,Kaplan,6175041701,Generation Next Fertility,success,0,2025-12-30 00:14:11
 "15519119,15519120,15519121,15519122,15519123,15519124,15519125,15519126",Amy,Zuckerman,7177157360,Generation Next Fertility,success,0,2025-12-30 00:15:06
+15499410,CARRIE,KUHLMAN,8182053822,Southern California Reproductive Center (SCRC),verification_failed,1,2025-12-30 11:22:38
+15499410,CARRIE,KUHLMAN,8182053822,Southern California Reproductive Center (SCRC),success,0,2025-12-30 11:31:40
+15497596,CARRIE,KUHLMAN,8182053822,Southern California Reproductive Center (SCRC),success,0,2025-12-30 11:32:50
+15497409,AMANDA,FOX,6617130757,Southern California Reproductive Center (SCRC),success,0,2025-12-30 11:34:03

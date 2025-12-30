@@ -4,6 +4,7 @@ Login module - handles eIVF application opening, login, and closing
 import time
 import psutil
 from pywinauto import Application, Desktop
+from config import SCRC_SECRET_KEY
 
 import modules.helper as helper
 
@@ -114,7 +115,7 @@ def close_application(window):
 
 
 
-def login(window, email, pin, clinic_code, http_address):
+def login(window, email, pin, clinic_code, http_address, login_status):
     """
     Perform login with email and password.
     Returns: True if successful, False otherwise
@@ -169,8 +170,66 @@ def login(window, email, pin, clinic_code, http_address):
             except Exception as e:
                 helper.log_print(f"Error entering clinic code: {str(e)}")
                 return False
+        
+        if login_status == "double":
 
-        # Click login button
+                # Step 1: Click "Option >>" button
+            helper.log_print("Clicking Option >> button...")
+            option_button = window.child_window(auto_id="4", class_name="ThunderRT6CommandButton")
+            option_button.click_input()
+            time.sleep(1)  # Wait for options to expand
+            helper.log_print("Option button clicked")
+
+            # Step 2: Click "Application Configuration" button
+            helper.log_print("Clicking Double Login Configuration button...")
+            config_button = window.child_window(auto_id="3", class_name="ThunderRT6CommandButton")
+            config_button.click_input()
+            time.sleep(2)  # Wait for configuration window to open
+            helper.log_print("Double Login Configuration button clicked")
+
+            # Step 3: Connect to the Application Configuration window using win32 backend for VB6 controls
+            helper.log_print("Connecting to Application Configuration window...")
+            try:
+                config_app = Application(backend="win32").connect(title="Application Configuration")
+                config_window = config_app.window(title="Application Configuration")
+                config_window.wait('visible', timeout=5)
+                helper.log_print("Connected to Application Configuration window")
+            except Exception as config_err:
+                helper.log_print(f"Error connecting to config window: {config_err}")
+                config_window = None
+
+            # Step 4: Click Save button to apply changes
+            helper.log_print("Clicking Double Login Save button...")
+            try:
+                if config_window:
+                    # Find Save button using control_id=1 (integer) for win32 backend
+                    save_button = config_window.child_window(
+                        control_id=1, 
+                        class_name="ThunderRT6CommandButton"
+                    )
+                    save_button.wait('visible', timeout=5)
+                    save_button.click_input()
+                    time.sleep(1)
+                    helper.log_print("Configuration saved")
+                else:
+                    raise Exception("Config window not available")
+            except Exception as save_error:
+                helper.log_print(f"Could not find Save button with primary method: {save_error}")
+                # Fallback: try using Desktop to find the button directly
+                try:
+                    desktop_win32 = Desktop(backend="win32")
+                    config_win = desktop_win32.window(title="Application Configuration")
+                    save_button = config_win.child_window(control_id=1, class_name="ThunderRT6CommandButton")
+                    save_button.click_input()
+                    time.sleep(1)
+                    helper.log_print("Configuration saved (fallback method)")
+                except Exception as fallback_err:
+                    helper.log_print(f"Could not find save button: {fallback_err}, changes may need manual saving")
+
+            helper.log_print("Double Login Configuration saved successfully")
+        else:
+            helper.log_print("Double Login Configuration not needed")
+
         helper.log_print("Clicking login button...")
         try:
             # OK button has AutomationId "5" and class "ThunderRT6CommandButton"
@@ -194,6 +253,33 @@ def login(window, email, pin, clinic_code, http_address):
                 return False
 
         helper.log_print("Email and password entered, logon button clicked")
+
+        if http_address == "https://eivf.scrcivf.com/eivf_provider":
+            try:
+                time.sleep(5)
+                helper.log_print("Entering verification code...")
+                verification_code = helper.otp_generator()
+
+                # Connect to the eIVF .Net application using UIA backend (for WinForms)
+                app = Application(backend="uia").connect(title="eIVF .Net")
+
+                # Get the main window
+                main_window = app.window(title="eIVF .Net")
+
+                # Find the verification code text box by AutomationId
+                verf_code_box = main_window.child_window(auto_id="verfCode", control_type="Edit")
+
+                # Type the code into the text box
+                verf_code_box.type_keys(verification_code, with_spaces=True)
+
+                # Find and click the Verify button
+                verify_button = main_window.child_window(auto_id="button1", control_type="Button")
+                verify_button.click()
+                time.sleep(2)
+                helper.log_print("Verification code entered successfully")
+            except Exception as e:
+                helper.log_print(f"Error entering verification code: {str(e)}")
+                return False
 
         # Wait for either popup (login error) or Rx Profile window (success)
         # Check both simultaneously to minimize wait time

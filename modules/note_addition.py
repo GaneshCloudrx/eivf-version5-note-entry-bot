@@ -319,7 +319,7 @@ def click_new_button():
             if new_btn.exists(timeout=2):
                 new_btn.invoke()
                 helper.log_print("New button clicked (direct)")
-                time.sleep(2)
+                time.sleep(5)
                 return True
         except Exception:
             pass
