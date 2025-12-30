@@ -38,7 +38,14 @@ def process_single_note(note_data, clinic_data, is_first):
         return False
     
     # Step 1: Search patient
-    if not patient_search.search_patient_by_phone_number_and_first_name_ctrl_id(phone, first_name, is_first):
+    try:
+        if not patient_search.search_patient_by_phone_number_and_first_name_ctrl_id(phone, first_name, is_first):
+            helper.log_print(f"Patient search failed for {first_name} {last_name}")
+            return False
+    except Exception as e:
+        if "patient_search_timeout" in str(e):
+            # Re-raise timeout to skip clinic
+            raise
         helper.log_print(f"Patient search failed for {first_name} {last_name}")
         return False
     helper.log_print(f"Patient '{first_name} {last_name}' found!")
@@ -136,7 +143,30 @@ def process_clinic(clinic, clinic_notes, patient_report):
             time.sleep(3)
             
         except Exception as e:
-            if "patient_verification_failed" in str(e):
+            if "patient_search_timeout" in str(e):
+                # Timeout error - skip entire clinic and mark all remaining notes as skipped
+                helper.log_print(f"\n{'='*60}")
+                helper.log_print("TIMEOUT ERROR: Skipping clinic due to patient search timeout")
+                helper.log_print(f"{'='*60}\n")
+                
+                # Mark current and all remaining notes as skipped with failure count
+                remaining_notes = clinic_notes.iloc[idx:].reset_index(drop=True)
+                for _, remaining_note in remaining_notes.iterrows():
+                    remaining_note_data = data_reader.parse_note_data(remaining_note)
+                    key = f"{remaining_note_data['patient_phone']}_{remaining_note_data['patient_first_name']}_{remaining_note_data['clinic_name']}"
+                    current_failures = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
+                    helper.save_patient_to_report(remaining_note_data, 'skipped', current_failures)
+                    patient_report[key] = {'failure_count': str(current_failures), 'status': 'skipped'}
+                    helper.log_print(f"Marked {remaining_note_data['patient_first_name']} {remaining_note_data['patient_last_name']} as skipped (attempt {current_failures}/3)")
+                
+                # Close eIVF and return to continue with next clinic
+                try:
+                    login.close_application(window)
+                except:
+                    login.kill_application("eIVF.exe")
+                return success_count, fail_count
+                
+            elif "patient_verification_failed" in str(e):
                 # Track verification failures
                 key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}"
                 current_failures = int(patient_report.get(key, {}).get('failure_count', 0)) + 1

@@ -56,7 +56,6 @@ def get_login_token(api_base_url, admin_email, admin_password):
     data_json = {
         "method": "admin_login",
         "role": 'admin',
-        "public_ip": "66.172.59.18",
         "email": admin_email,
         "password": admin_password
     }
@@ -151,7 +150,7 @@ def update_note_status(login_data, note_id):
                (False, {"needs_token_refresh": True}) if token expired (code: 401), 
                (False, {}) for other failures
     """
-    url = config.API_BASE_URL
+    url = config.PORTAL_API_URL  # Use portal API for note updates
     
     # Prepare the JSON data
     data_json = {

@@ -42,7 +42,7 @@ def click_sidebar_icon(main_window, icon_index):
     """
     try:
         # Step 3: Check for .NET error dialog before adding note
-        helper.check_and_close_dotnet_error_dialog()
+        #helper.check_and_close_dotnet_error_dialog()
         
         sidebar_pane = main_window.child_window(
             class_name="pvOutlookGroup",
@@ -189,9 +189,14 @@ def search_patient_by_phone_number_and_first_name_ctrl_id(phone_number, first_na
         return True
         
     except Exception as e:
+        error_msg = str(e).lower()
         helper.log_print(f"Error in patient search: {e}")
         import traceback
         traceback.print_exc()
+        # Check if it's a timeout error
+        if "timeout" in error_msg or "timed out" in error_msg:
+            # Raise a special exception for timeout that can be caught to skip clinic
+            raise Exception("patient_search_timeout")
         return False
 
 
