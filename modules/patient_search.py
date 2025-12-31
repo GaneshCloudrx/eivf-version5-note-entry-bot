@@ -104,10 +104,28 @@ def click_patient_search_button():
         return False
 
 
-def open_patient_search_from_sidebar(main_window):
-    """Click on Patient Explorer button in the sidebar (index 2)."""
-    helper.log_print("Opening Patient Explorer from sidebar...")
-    return click_sidebar_icon(main_window, icon_index=2)
+def open_patient_search_from_pane(main_window):
+    """Click on Patient Explorer using relative coordinates."""
+    helper.log_print("Opening Patient Explorer...")
+    try:
+        # Reconnect using win32 backend
+        app = Application(backend="win32").connect(class_name="ThunderRT6MDIForm", title="eIVF")
+        main_window_win32 = app.window(class_name="ThunderRT6MDIForm", title="eIVF")
+        
+        # Calculate relative coordinates from absolute position (181, 87)
+        rect = main_window_win32.rectangle()
+        click_x = 181 - rect.left
+        click_y = 87 - rect.top
+        
+        helper.log_print(f"Clicking at relative coords ({click_x}, {click_y})")
+        main_window_win32.click_input(coords=(click_x, click_y))
+        time.sleep(1)
+        helper.log_print("Patient Explorer clicked successfully")
+        return True
+        
+    except Exception as e:
+        helper.log_print(f"Error clicking Patient Explorer: {e}")
+        return False
 
 
 def search_patient_by_phone_number_and_first_name_ctrl_id(phone_number, first_name, is_first=True):
@@ -132,7 +150,7 @@ def search_patient_by_phone_number_and_first_name_ctrl_id(phone_number, first_na
             if not main_window_uia:
                 helper.log_print("Could not find eIVF window")
                 return False
-            if not open_patient_search_from_sidebar(main_window_uia):
+            if not open_patient_search_from_pane(main_window_uia):
                 helper.log_print("Failed to open Patient Explorer")
                 return False
             time.sleep(2)

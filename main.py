@@ -19,6 +19,8 @@ import modules.data_reader as data_reader
 
 # API
 from data_from_api import data_from_api, update_api
+from modules.api_integration import log_error_to_portal
+from config import MAX_PATIENT_FAILURES
 
 
 def process_single_note(note_data, clinic_data, is_first):
@@ -130,6 +132,12 @@ def process_clinic(clinic, clinic_notes, patient_report):
             note_data = data_reader.parse_note_data(note)
             clinic_data = data_reader.parse_clinic_data(clinic)
             
+            # Ensure Notes window is closed before processing next patient
+            if not is_first:
+                helper.log_print("Closing Notes window before next patient...")
+                notes.close_notes_window()
+                time.sleep(1)
+            
             if process_single_note(note_data, clinic_data, is_first):
                 success_count += 1
                 helper.save_patient_to_report(note_data, 'success', 0)
@@ -137,6 +145,25 @@ def process_clinic(clinic, clinic_notes, patient_report):
                 # Update API
                 update_api(note_data['note_id'])
             else:
+                # Track failure count
+                key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}"
+                current_failures = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
+                helper.save_patient_to_report(note_data, 'failed', current_failures)
+                patient_report[key] = {'failure_count': str(current_failures), 'status': 'failed'}
+                
+                helper.log_print(f"Patient note failed (attempt {current_failures}/{MAX_PATIENT_FAILURES})")
+                
+                # Call error API if failures exceed threshold
+                if current_failures >= MAX_PATIENT_FAILURES:
+                    patient_name = f"{note_data['patient_first_name']} {note_data['patient_last_name']}"
+                    log_error_to_portal(
+                        patient_name=patient_name,
+                        patient_dob=note_data.get('patient_dob', ''),
+                        clinic_name=note_data['clinic_name'],
+                        emr_system=note_data.get('emr_system', 'eIVF'),
+                        error_title="Patient Note Failed"
+                    )
+                
                 fail_count += 1
             
             is_first = False
@@ -173,7 +200,19 @@ def process_clinic(clinic, clinic_notes, patient_report):
                 helper.save_patient_to_report(note_data, 'verification_failed', current_failures)
                 patient_report[key] = {'failure_count': str(current_failures), 'status': 'verification_failed'}
                 
-                helper.log_print(f"Verification failed ({current_failures}/{helper.MAX_FAILURES})")
+                helper.log_print(f"Verification failed ({current_failures}/{MAX_PATIENT_FAILURES})")
+                
+                # Call error API if failures exceed threshold
+                if current_failures >= MAX_PATIENT_FAILURES:
+                    patient_name = f"{note_data['patient_first_name']} {note_data['patient_last_name']}"
+                    log_error_to_portal(
+                        patient_name=patient_name,
+                        patient_dob=note_data.get('patient_dob', ''),
+                        clinic_name=note_data['clinic_name'],
+                        emr_system=note_data.get('emr_system', 'eIVF'),
+                        error_title="Patient Verification Failed"
+                    )
+                
                 fail_count += 1
             else:
                 helper.log_print(f"ERROR: {str(e)}")

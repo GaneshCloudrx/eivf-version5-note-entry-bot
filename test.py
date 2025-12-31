@@ -1,17 +1,10 @@
-from pywinauto import Application
+"""Test script for close_notes_window function"""
+from modules.note_addition import close_notes_window
 
-# Connect to the eIVF .Net application using UIA backend (for WinForms)
-app = Application(backend="uia").connect(title="eIVF .Net")
-
-# Get the main window
-main_window = app.window(title="eIVF .Net")
-
-# Find the verification code text box by AutomationId
-verf_code_box = main_window.child_window(auto_id="verfCode", control_type="Edit")
-
-# Type the code into the text box
-verf_code_box.type_keys("12345", with_spaces=True)
-
-# Find and click the Verify button
-verify_button = main_window.child_window(auto_id="button1", control_type="Button")
-verify_button.click()
+if __name__ == "__main__":
+    print("\n=== Testing Close Notes Window ===\n")
+    result = close_notes_window()
+    if result:
+        print("✓ Notes window closed successfully")
+    else:
+        print("✗ Failed to close Notes window")

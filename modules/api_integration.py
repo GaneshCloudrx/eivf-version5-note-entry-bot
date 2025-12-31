@@ -197,6 +197,67 @@ def update_note_status(login_data, note_id):
         helper.log_print(f"Update note error: {str(e)}")
         return False, {}
 
+def log_error_to_portal(patient_name, patient_dob, clinic_name, emr_system, error_title="Patient Note Failed"):
+    """
+    Log error to portal when patient note fails more than 3 times.
+    
+    Args:
+        patient_name: Patient's full name
+        patient_dob: Patient's date of birth
+        clinic_name: Name of the clinic
+        emr_system: EMR system name
+        error_title: Title of the error (default: "Patient Note Failed")
+    
+    Returns:
+        bool: True if logged successfully, False otherwise
+    """
+    import base64
+    
+    url = config.ERROR_API_ENDPOINT
+    
+    # Create Basic Auth header
+    auth_string = f"{config.ERROR_API_AUTH_USERNAME}:{config.ERROR_API_AUTH_PASSWORD}"
+    auth_bytes = auth_string.encode('utf-8')
+    auth_base64 = "Basic " + base64.b64encode(auth_bytes).decode('utf-8')
+    
+    # Build payload
+    payload = {
+        "type": "error",
+        "title": error_title,
+        "server_name": config.API_SERVER_NAME,
+        "bot_name": config.API_BOT_NAME,
+        "detail": {
+            "name": patient_name,
+            "dob": patient_dob,
+            "clinic": clinic_name,
+            "emr": emr_system
+        }
+    }
+    
+    headers = {
+        'Authorization': auth_base64,
+        'Content-Type': 'application/json'
+    }
+    
+    try:
+        helper.log_print(f"Logging error to portal for patient: {patient_name}")
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        
+        if response.status_code == 200:
+            helper.log_print(f"✓ Error logged to portal successfully")
+            return True
+        else:
+            helper.log_print(f"Error API returned status: {response.status_code}")
+            return False
+            
+    except requests.exceptions.RequestException as e:
+        helper.log_print(f"Error logging to portal: {str(e)}")
+        return False
+    except Exception as e:
+        helper.log_print(f"Unexpected error logging to portal: {str(e)}")
+        return False
+
+
 # Example usage and testing
 if __name__ == "__main__":
     # Test get_clinic_details

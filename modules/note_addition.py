@@ -264,18 +264,20 @@ def click_new_button():
             app_win32 = Application(backend="win32").connect(class_name="ThunderRT6MDIForm", title="eIVF")
             eivf_window = app_win32.window(class_name="ThunderRT6MDIForm", title="eIVF")
             
-            # Find and click Results checkbox
+            # Find and click Results checkbox with dynamic wait
             results_checkbox = eivf_window.child_window(
                 class_name="ThunderRT6CheckBox",
                 control_id=31
             )
-            results_checkbox.set_focus()
+            results_checkbox.wait("exists enabled", timeout=10)
             results_checkbox.click_input()
             helper.log_print("✔ Results checkbox clicked")
-            time.sleep(0.5)
+            time.sleep(1)
             
             # Find and click All checkbox
             helper.log_print("Clicking All checkbox (control_id=35)...")
+            # Reconnect to window after clicking Results to ensure fresh reference
+            eivf_window = app_win32.window(class_name="ThunderRT6MDIForm", title="eIVF")
             all_checkbox = eivf_window.child_window(
                 class_name="ThunderRT6CheckBox",
                 control_id=35
@@ -470,28 +472,38 @@ def close_notes_window():
         helper.log_print("Searching for Windows Forms Close button...")
         for win in desktop.windows():
             try:
-                for desc in win.descendants():
-                    try:
-                        cls = getattr(desc.element_info, "class_name", "") or ""
-                        name = getattr(desc.element_info, "name", "") or ""
-                        
-                        # Look for Windows Forms BUTTON with name "Close"
-                        if "WindowsForms" in cls and "BUTTON" in cls.upper() and name == "Close":
-                            rect = desc.rectangle()
-                            helper.log_print(
-                                f"Found Windows Forms Close button: class='{cls}' rect=({rect.left},{rect.top},{rect.right},{rect.bottom})")
+                win_title = win.window_text()
+                # Check if this is the Notes window
+                if "Notes" in win_title and "Quick Summary" in win_title:
+                    helper.log_print(f"Found Notes window: '{win_title}'")
+                    
+                    # Focus the Notes window first
+                    win.set_focus()
+                    time.sleep(0.5)
+                    helper.log_print("Notes window focused")
+                    
+                    for desc in win.descendants():
+                        try:
+                            cls = getattr(desc.element_info, "class_name", "") or ""
+                            name = getattr(desc.element_info, "name", "") or ""
                             
-                            # Click using mouse
-                            center_x = (rect.left + rect.right) // 2
-                            center_y = (rect.top + rect.bottom) // 2
-                            helper.log_print(f"Clicking Close button at ({center_x}, {center_y})")
-                            
-                            mouse.click(coords=(center_x, center_y))
-                            helper.log_print("Close button clicked successfully!")
-                            time.sleep(1)
-                            return True
-                    except:
-                        continue
+                            # Look for Windows Forms BUTTON with name "Close"
+                            if "WindowsForms" in cls and "BUTTON" in cls.upper() and name == "Close":
+                                rect = desc.rectangle()
+                                helper.log_print(
+                                    f"Found Windows Forms Close button: class='{cls}' rect=({rect.left},{rect.top},{rect.right},{rect.bottom})")
+                                
+                                # Click using mouse
+                                center_x = (rect.left + rect.right) // 2
+                                center_y = (rect.top + rect.bottom) // 2
+                                helper.log_print(f"Clicking Close button at ({center_x}, {center_y})")
+                                
+                                mouse.click(coords=(center_x, center_y))
+                                helper.log_print("Close button clicked successfully!")
+                                time.sleep(1)
+                                return True
+                        except:
+                            continue
             except:
                 continue
         
