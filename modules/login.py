@@ -49,11 +49,24 @@ def open_application(app_path, target_title, max_wait_time=30):
     try:
         app = Application(backend="uia").start(app_path)
         helper.log_print("Application started! Waiting for window...")
+        
+        # Give application a moment to start
+        time.sleep(2)
+        
+        # Check for update wizard immediately after start
+        dismiss_update_wizard()
 
-        # Wait for window to appear
-        for i in range(max_wait_time):  # Wait up to max_wait_time seconds
+        # Wait for window to appear (up to max_wait_time seconds)
+        for i in range(max_wait_time):
             time.sleep(1)
             helper.log_print(f"Waiting... {i+1}s")
+            
+            # Check for and dismiss update wizard more frequently after 5 seconds
+            if i >= 4:  # After 5 seconds, check every iteration
+                if dismiss_update_wizard():
+                    helper.log_print("Update wizard dismissed, continuing to wait for login window...")
+                    # Wait a bit for login window to appear after dismissing wizard
+                    time.sleep(2)
 
             # Check for VB6 window
             for win in desktop.windows():
@@ -61,6 +74,29 @@ def open_application(app_path, target_title, max_wait_time=30):
                     win_title = win.window_text()
                     win_class = win.element_info.class_name
 
+                    if win_title == target_title and win_class == target_class:
+                        helper.log_print(f"Found window: '{win_title}' (Class: {win_class})")
+                        process_id = win.element_info.process_id
+                        app = Application(backend="uia").connect(process=process_id)
+                        window = app.window(title=target_title, class_name=target_class)
+                        window.wait('visible', timeout=5)
+                        helper.log_print("Application window appeared and connected")
+                        return app, window
+                except:
+                    pass
+        
+        # Final check for update wizard before giving up
+        helper.log_print(f"Login window not found after {max_wait_time}s, checking for update wizard one more time...")
+        if dismiss_update_wizard():
+            helper.log_print("Update wizard dismissed! Waiting 5 more seconds for login window...")
+            time.sleep(5)
+            
+            # Try to find login window one more time
+            for win in desktop.windows():
+                try:
+                    win_title = win.window_text()
+                    win_class = win.element_info.class_name
+                    
                     if win_title == target_title and win_class == target_class:
                         helper.log_print(f"Found window: '{win_title}' (Class: {win_class})")
                         process_id = win.element_info.process_id
@@ -80,6 +116,85 @@ def open_application(app_path, target_title, max_wait_time=30):
 
     helper.log_print("Failed to open application")
     return None, None
+
+def dismiss_update_wizard():
+    """
+    Check for and dismiss the eIVF Update Wizard if it appears.
+    Clicks the "Update Later" button if found.
+    
+    Returns:
+        True if update wizard was found and dismissed, False otherwise
+    """
+    try:
+        desktop = Desktop(backend="uia")
+        
+        # Look for Update Wizard window (check both UIA and partial title match)
+        for win in desktop.windows():
+            try:
+                win_title = win.window_text()
+                
+                # Check for various update wizard title patterns
+                if any(keyword in win_title for keyword in ["Update Wizard", "eIVF Update", "PracticeHwy"]):
+                    helper.log_print(f"⚠️  Found Update Wizard: '{win_title}'")
+                    
+                    # Focus the window first
+                    try:
+                        win.set_focus()
+                        time.sleep(0.5)
+                    except:
+                        pass
+                    
+                    # Try to find and click "Update Later" button
+                    # Method 1: By title and control type
+                    try:
+                        update_later_btn = win.child_window(
+                            title="Update Later",
+                            control_type="Button"
+                        )
+                        
+                        if update_later_btn.exists(timeout=2):
+                            helper.log_print("Clicking 'Update Later' button...")
+                            update_later_btn.click_input()
+                            time.sleep(2)
+                            helper.log_print("✓ Update Wizard dismissed")
+                            return True
+                    except Exception as e:
+                        pass
+                    
+                    # Method 2: Try with auto_id
+                    try:
+                        update_later_btn = win.child_window(auto_id="btnUpdateLater")
+                        if update_later_btn.exists(timeout=2):
+                            helper.log_print("Clicking 'Update Later' button (via auto_id)...")
+                            update_later_btn.click_input()
+                            time.sleep(2)
+                            helper.log_print("✓ Update Wizard dismissed")
+                            return True
+                    except Exception as e2:
+                        pass
+                    
+                    # Method 3: Search for any button with "Later" in text
+                    try:
+                        for btn in win.descendants(control_type="Button"):
+                            btn_text = btn.window_text()
+                            if "Later" in btn_text or "later" in btn_text:
+                                helper.log_print(f"Found button with 'Later': '{btn_text}', clicking...")
+                                btn.click_input()
+                                time.sleep(2)
+                                helper.log_print("✓ Update Wizard dismissed")
+                                return True
+                    except Exception as e3:
+                        helper.log_print(f"All methods failed to dismiss wizard: {e3}")
+                    
+            except:
+                pass
+        
+        return False
+        
+    except Exception as e:
+        helper.log_print(f"Error checking for Update Wizard: {e}")
+        return False
+
 
 def kill_application(process_name):
     for proc in psutil.process_iter(['pid', 'name']):

@@ -79,7 +79,7 @@ def click_patient_search_button():
         app, main_window = get_eivf_main_window()
         if not main_window:
             helper.log_print("Could not find main eIVF window")
-            return False
+            raise Exception("eivf_window_not_found")
 
         try:
             patient_search_button = main_window.child_window(
@@ -124,6 +124,10 @@ def open_patient_search_from_pane(main_window):
         return True
         
     except Exception as e:
+        error_str = str(e).lower()
+        if "could not find" in error_str or "not found" in error_str or "timed out" in error_str:
+            helper.log_print(f"Error clicking Patient Explorer: {e}")
+            raise Exception("eivf_window_not_found")
         helper.log_print(f"Error clicking Patient Explorer: {e}")
         return False
 

@@ -53,14 +53,11 @@ def decrypt_password(encrypted_text):
 
 def data_from_api():
     try:
-        helper.log_print(f"API DATA: 1. Fetching clinic details")
         clinic_details = api.get_clinic_details()
         if clinic_details:
             clinic_data = clinic_details['data']
-            helper.log_print(f"API DATA: 2. Clinic data fetched successfully with {len(clinic_data)} clinics")
             clinics = pd.DataFrame(clinic_data, columns=['Clinic_Id', 'Username', 'Password1', 'clinic_name_sf', 'Clinic_Name', 'URL', 'Facility', 'Color', 'login_status', 'note_bot_machine', 'lamar_bot_machine', 'ins_pulling_bot_machine'])
             clinics = clinics[clinics['note_bot_machine'] == MACHINE_NAME].reset_index(drop=True)
-            helper.log_print(f"API DATA: 3. Filtered clinics for machine {MACHINE_NAME} with {len(clinics)} clinics")
             
             # Decrypt Password1 column
             for index, row in clinics.iterrows():
@@ -69,42 +66,33 @@ def data_from_api():
                         decrypted_password = decrypt_password(row['Password1'])
                         clinics.at[index, 'Password1'] = decrypted_password
                     except Exception as e:
-                        helper.log_print(f"API DATA: Warning - Failed to decrypt password for clinic {row['Clinic_Name']}: {str(e)}")
-            helper.log_print(f"API DATA: 3a. Passwords decrypted successfully")
+                        helper.log_print(f"Warning - Failed to decrypt password for clinic {row['Clinic_Name']}: {str(e)}")
             if len(clinics) > 0:
-                helper.log_print(f"API DATA: 4. Fetching token for admin")
                 status, token = api.get_login_token(PORTAL_API_URL, ADMIN_EMAIL, ADMIN_PASSWORD)
                 if status:
-                    helper.log_print(f"API DATA: 5. Token fetched successfully")
                     status, note_details = api.get_emr_notes(PORTAL_API_URL, token)  
                     if status:
-                        helper.log_print(f"API DATA: 6. Notes fetched successfully with {len(note_details['data'])} notes")
                         notes = pd.DataFrame(note_details['data'], columns=['note_id', 'patient_id', 'note', 'author', 'created', 'patient_first_name', 'patient_last_name', 'patient_dob', 'patient_phone', 'clinic_name', 'emr_system', 'prescriber_first_name', 'prescriber_last_name', 'created_formatted', 'prescriber_name'])
                         notes = notes[notes['clinic_name'].isin(clinics['Clinic_Name'])].reset_index(drop=True)
-                        helper.log_print(f"API DATA: 7. Notes filtered for clinics with {len(notes)} notes")
                         return clinics, notes
                     else:
-                        helper.log_print(f"API DATA: 6. Failed to fetch notes")
                         return clinics, None
                 else:
-                    helper.log_print(f"API DATA: 5. Failed to fetch token")
                     return clinics, None
             else:
-                helper.log_print(f"API DATA: 3. No clinics found for machine {MACHINE_NAME}")
                 return None, None
         else:
-            helper.log_print(f"API DATA: 1. Failed to fetch clinic details")
             return None, None
     except Exception as e:
-        helper.log_print(f"API DATA: #. Error in data_from_api: {str(e)}")
+        helper.log_print(f"Error in data_from_api: {str(e)}")
         return None, None
 
 def update_api(note_id):
     status, token = api.get_login_token(PORTAL_API_URL, ADMIN_EMAIL, ADMIN_PASSWORD)
     if status:
-        helper.log_print(f"API DATA: 5. Token fetched successfully")
         api.update_note_status(token, note_id) 
 
 
 if __name__ == "__main__":
     data_from_api()
+

@@ -264,15 +264,7 @@ def click_new_button():
             app_win32 = Application(backend="win32").connect(class_name="ThunderRT6MDIForm", title="eIVF")
             eivf_window = app_win32.window(class_name="ThunderRT6MDIForm", title="eIVF")
             
-            # Find and click Results checkbox with dynamic wait
-            results_checkbox = eivf_window.child_window(
-                class_name="ThunderRT6CheckBox",
-                control_id=31
-            )
-            results_checkbox.wait("exists enabled", timeout=10)
-            results_checkbox.click_input()
-            helper.log_print("✔ Results checkbox clicked")
-            time.sleep(1)
+            
             
             # Find and click All checkbox
             helper.log_print("Clicking All checkbox (control_id=35)...")
@@ -282,29 +274,23 @@ def click_new_button():
                 class_name="ThunderRT6CheckBox",
                 control_id=35
             )
+            all_checkbox.wait("exists enabled", timeout=10)
             all_checkbox.set_focus()
             all_checkbox.click_input()
             helper.log_print("✔ All checkbox clicked")
             time.sleep(0.5)
+
+            #Find and click notes checkbox with dynamic wait
+            notes_checkbox = eivf_window.child_window(
+                class_name="ThunderRT6CheckBox",
+                control_id=37
+            )
+            notes_checkbox.wait("exists enabled", timeout=30)
+            notes_checkbox.set_focus()
+            notes_checkbox.click_input()
+            helper.log_print("✔ Notes checkbox clicked")
+            time.sleep(1)
             
-            # Verify All checkbox is checked (click again if not checked)
-            # For VB6 checkboxes, we can check the state by trying to read it
-            # If toggle state is still off, click again
-            try:
-                # Re-find to get fresh state
-                all_checkbox = eivf_window.child_window(
-                    class_name="ThunderRT6CheckBox",
-                    control_id=35
-                )
-                # Check if it's checked by looking at button state
-                state = all_checkbox.get_check_state()
-                if state == 0:  # Unchecked
-                    helper.log_print("All checkbox not checked, clicking again...")
-                    all_checkbox.click_input()
-                    time.sleep(0.3)
-                helper.log_print("✔ All checkbox is checked")
-            except Exception as state_err:
-                helper.log_print(f"Could not verify checkbox state: {state_err}")
                 # Assume it's checked since we clicked it
             
         except Exception as e:

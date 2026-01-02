@@ -164,10 +164,6 @@ class LogQueueManager:
                 ]
             }
             
-            # Debug: Print request details
-            print(f"[LOG API] Sending {len(self.batch)} logs to: {API_LOG_ENDPOINT}")
-            print(f"[LOG API] Payload: {payload}")
-            
             response = requests.post(
                 API_LOG_ENDPOINT,
                 json=payload,
@@ -178,17 +174,8 @@ class LogQueueManager:
                 timeout=API_TIMEOUT
             )
             
-            # Debug: Print response details
-            print(f"[LOG API] Response Status: {response.status_code}")
-            print(f"[LOG API] Response Headers: {dict(response.headers)}")
-            print(f"[LOG API] Response Body: {response.text}")
-            
-            if response.status_code == 200:
-                # Success - update last sent line if we're tracking
-                print(f"[LOG API] Successfully sent {len(self.batch)} logs")
-            else:
+            if response.status_code != 200:
                 error_msg = f"API log send failed with status {response.status_code}, response: {response.text}"
-                print(error_msg)
                 self._write_error_to_log_file(error_msg)
                 
         except requests.exceptions.RequestException as e:

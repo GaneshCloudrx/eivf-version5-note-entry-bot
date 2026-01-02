@@ -4,6 +4,7 @@ eIVF Note Entry Bot - Main Orchestrator
 """
 import time
 import traceback
+from pywinauto import Application
 
 # Config
 from config import APP_PATH, TARGET_TITLE
@@ -18,7 +19,7 @@ import modules.note_addition as notes
 import modules.data_reader as data_reader
 
 # API
-from data_from_api import data_from_api, update_api
+from modules.data_from_api import data_from_api, update_api
 from modules.api_integration import log_error_to_portal
 from config import MAX_PATIENT_FAILURES
 
@@ -48,6 +49,9 @@ def process_single_note(note_data, clinic_data, is_first):
         if "patient_search_timeout" in str(e):
             # Re-raise timeout to skip clinic
             raise
+        elif "eivf_window_not_found" in str(e):
+            # Re-raise to trigger restart
+            raise Exception("eivf_window_not_found")
         helper.log_print(f"Patient search failed for {first_name} {last_name}")
         return False
     helper.log_print(f"Patient '{first_name} {last_name}' found!")
@@ -92,34 +96,54 @@ def process_single_note(note_data, clinic_data, is_first):
     return True
 
 
-def process_clinic(clinic, clinic_notes, patient_report):
+def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
     """Process all notes for a single clinic"""
     helper.log_print(f"\n{'#'*60}")
     helper.log_print(f"CLINIC: {clinic['Clinic_Name']} ({len(clinic_notes)} notes)")
     helper.log_print(f"{'#'*60}")
     
-    # Open and configure application
-    app, window = login.open_application(APP_PATH, TARGET_TITLE)
-    if not app or not window:
-        helper.log_print("Failed to open application")
-        raise Exception("Login Issue")
+    current_url = clinic['URL']
+    skip_config = False
     
-    # Change configuration
-    if not config_change.change_configuration(window, clinic['URL'], clinic['Facility']):
-        helper.log_print("Configuration failed")
-        login.close_application(window)
-        return 0, 0
+    # Check if URL is same as previous clinic
+    if previous_url and previous_url == current_url:
+        helper.log_print(f"URL unchanged ({current_url}) - skipping configuration change")
+        skip_config = True
     
-    # Restart and login
-    login.kill_application("eIVF.exe")
-    app, window = login.open_application(APP_PATH, TARGET_TITLE)
-    
-    if not login.login(window, clinic['Username'], clinic['Password1'], 
-                       clinic['clinic_name_sf'], clinic['URL'], clinic['login_status']):
-        helper.log_print("Login failed")
-        login.close_application(window)
-        return 0, 0
-    helper.log_print("Login successful!")
+    if skip_config:
+        # Just login without config change (eIVF already open from previous clinic)
+        app = Application(backend="uia").connect(title="eIVF")
+        window = app.window(title="eIVF")
+        
+        if not login.login(window, clinic['Username'], clinic['Password1'], 
+                           clinic['clinic_name_sf'], clinic['URL'], clinic['login_status']):
+            helper.log_print("Login failed")
+            login.close_application(window)
+            return 0, 0
+        helper.log_print("Login successful!")
+    else:
+        # Full process: Open, configure, restart, and login
+        app, window = login.open_application(APP_PATH, TARGET_TITLE)
+        if not app or not window:
+            helper.log_print("Failed to open application")
+            raise Exception("Login Issue")
+        
+        # Change configuration
+        if not config_change.change_configuration(window, clinic['URL'], clinic['Facility']):
+            helper.log_print("Configuration failed")
+            login.close_application(window)
+            return 0, 0
+        
+        # Restart and login
+        login.kill_application("eIVF.exe")
+        app, window = login.open_application(APP_PATH, TARGET_TITLE)
+        
+        if not login.login(window, clinic['Username'], clinic['Password1'], 
+                           clinic['clinic_name_sf'], clinic['URL'], clinic['login_status']):
+            helper.log_print("Login failed")
+            login.close_application(window)
+            return 0, 0
+        helper.log_print("Login successful!")
     
     # Process each note
     success_count = 0
@@ -170,7 +194,34 @@ def process_clinic(clinic, clinic_notes, patient_report):
             time.sleep(3)
             
         except Exception as e:
-            if "patient_search_timeout" in str(e):
+            if "eivf_window_not_found" in str(e):
+                # eIVF window not found - restart application
+                helper.log_print(f"\n{'='*60}")
+                helper.log_print("ERROR: eIVF window not found - restarting application...")
+                helper.log_print(f"{'='*60}\n")
+                
+                # Kill eIVF
+                login.kill_application("eIVF.exe")
+                time.sleep(2)
+                
+                # Restart application
+                helper.log_print("Restarting eIVF...")
+                app, window = login.open_application(APP_PATH, TARGET_TITLE)
+                if not app or not window:
+                    helper.log_print("Failed to restart eIVF - skipping remaining notes")
+                    return success_count, fail_count
+                
+                # Re-login
+                if not login.login(window, clinic['Username'], clinic['Password1'], 
+                                   clinic['clinic_name_sf'], clinic['URL'], clinic['login_status']):
+                    helper.log_print("Re-login failed - skipping remaining notes")
+                    return success_count, fail_count
+                
+                helper.log_print("eIVF restarted and logged in successfully")
+                is_first = True  # Reset to first patient mode
+                continue  # Continue to next patient
+                
+            elif "patient_search_timeout" in str(e):
                 # Timeout error - skip entire clinic and mark all remaining notes as skipped
                 helper.log_print(f"\n{'='*60}")
                 helper.log_print("TIMEOUT ERROR: Skipping clinic due to patient search timeout")
@@ -262,6 +313,7 @@ def main():
             # Process each clinic
             total_success = 0
             total_fail = 0
+            previous_url = None
             
             for _, clinic in clinics.iterrows():
                 clinic_notes = notes_to_process[
@@ -271,9 +323,12 @@ def main():
                 if len(clinic_notes) == 0:
                     continue
                 
-                success, fail = process_clinic(clinic, clinic_notes, patient_report)
+                success, fail = process_clinic(clinic, clinic_notes, patient_report, previous_url)
                 total_success += success
                 total_fail += fail
+                
+                # Track current URL for next clinic
+                previous_url = clinic['URL']
             
             # Summary
             helper.log_print(f"\n{'='*60}")

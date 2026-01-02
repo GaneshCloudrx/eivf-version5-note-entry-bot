@@ -32,12 +32,10 @@ def get_clinic_details():
     }
     
     try:
-        helper.log_print(f"Fetching clinic details from: {url}")
         response = requests.post(url, headers=headers, data={}, files={})
         response.raise_for_status()
         
         result = response.json()
-        helper.log_print(f"Successfully retrieved clinic details")
         return result
         
     except requests.exceptions.RequestException as e:
