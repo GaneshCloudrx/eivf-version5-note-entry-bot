@@ -1,0 +1,3 @@
+note_id,patient_first_name,patient_last_name,patient_phone,clinic_name,status,failure_count,last_attempt_time
+15552981,Marielena,Zambrano,7733870138,"Advanced Reproductive Health Centers, LTD- Chicago IVF",success,0,2026-01-02 10:07:05
+15552562,Elizabeth,Maysonet,2198162279,"Advanced Reproductive Health Centers, LTD- Chicago IVF",success,0,2026-01-02 10:08:45

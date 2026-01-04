@@ -24,6 +24,12 @@ from modules.api_integration import log_error_to_portal
 from config import MAX_PATIENT_FAILURES
 
 
+# Custom exception for triggering application restart
+class RestartEivfException(Exception):
+    """Raised when eIVF needs to be restarted"""
+    pass
+
+
 def process_single_note(note_data, clinic_data, is_first):
     """Process a single patient note entry"""
     helper.log_print(f"\n{'='*60}")
@@ -152,122 +158,135 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
     
     for idx, note in clinic_notes.iterrows():
         try:
-            helper.check_and_wait_if_paused()
-            note_data = data_reader.parse_note_data(note)
-            clinic_data = data_reader.parse_clinic_data(clinic)
-            
-            # Ensure Notes window is closed before processing next patient
-            if not is_first:
-                helper.log_print("Closing Notes window before next patient...")
-                notes.close_notes_window()
-                time.sleep(1)
-            
-            if process_single_note(note_data, clinic_data, is_first):
-                success_count += 1
-                helper.save_patient_to_report(note_data, 'success', 0)
+            try:
+                helper.check_and_wait_if_paused()
+                note_data = data_reader.parse_note_data(note)
+                clinic_data = data_reader.parse_clinic_data(clinic)
                 
-                # Update API
-                update_api(note_data['note_id'])
-            else:
-                # Track failure count
-                key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}"
-                current_failures = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
-                helper.save_patient_to_report(note_data, 'failed', current_failures)
-                patient_report[key] = {'failure_count': str(current_failures), 'status': 'failed'}
+                # Ensure Notes window is closed before processing next patient
+                if not is_first:
+                    helper.log_print("Closing Notes window before next patient...")
+                    notes.close_notes_window()
+                    time.sleep(1)
                 
-                helper.log_print(f"Patient note failed (attempt {current_failures}/{MAX_PATIENT_FAILURES})")
-                
-                # Call error API if failures exceed threshold
-                if current_failures >= MAX_PATIENT_FAILURES:
-                    patient_name = f"{note_data['patient_first_name']} {note_data['patient_last_name']}"
-                    log_error_to_portal(
-                        patient_name=patient_name,
-                        patient_dob=note_data.get('patient_dob', ''),
-                        clinic_name=note_data['clinic_name'],
-                        emr_system=note_data.get('emr_system', 'eIVF'),
-                        error_title="Patient Note Failed"
-                    )
-                
-                fail_count += 1
-            
-            is_first = False
-            time.sleep(3)
-            
-        except Exception as e:
-            if "eivf_window_not_found" in str(e):
-                # eIVF window not found - restart application
-                helper.log_print(f"\n{'='*60}")
-                helper.log_print("ERROR: eIVF window not found - restarting application...")
-                helper.log_print(f"{'='*60}\n")
-                
-                # Kill eIVF
-                login.kill_application("eIVF.exe")
-                time.sleep(2)
-                
-                # Restart application
-                helper.log_print("Restarting eIVF...")
-                app, window = login.open_application(APP_PATH, TARGET_TITLE)
-                if not app or not window:
-                    helper.log_print("Failed to restart eIVF - skipping remaining notes")
-                    return success_count, fail_count
-                
-                # Re-login
-                if not login.login(window, clinic['Username'], clinic['Password1'], 
-                                   clinic['clinic_name_sf'], clinic['URL'], clinic['login_status']):
-                    helper.log_print("Re-login failed - skipping remaining notes")
-                    return success_count, fail_count
-                
-                helper.log_print("eIVF restarted and logged in successfully")
-                is_first = True  # Reset to first patient mode
-                continue  # Continue to next patient
-                
-            elif "patient_search_timeout" in str(e):
-                # Timeout error - skip entire clinic and mark all remaining notes as skipped
-                helper.log_print(f"\n{'='*60}")
-                helper.log_print("TIMEOUT ERROR: Skipping clinic due to patient search timeout")
-                helper.log_print(f"{'='*60}\n")
-                
-                # Mark current and all remaining notes as skipped with failure count
-                remaining_notes = clinic_notes.iloc[idx:].reset_index(drop=True)
-                for _, remaining_note in remaining_notes.iterrows():
-                    remaining_note_data = data_reader.parse_note_data(remaining_note)
-                    key = f"{remaining_note_data['patient_phone']}_{remaining_note_data['patient_first_name']}_{remaining_note_data['clinic_name']}"
+                if process_single_note(note_data, clinic_data, is_first):
+                    success_count += 1
+                    helper.save_patient_to_report(note_data, 'success', 0)
+                    
+                    # Update API
+                    update_api(note_data['note_id'])
+                else:
+                    # Track failure count
+                    key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}"
                     current_failures = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
-                    helper.save_patient_to_report(remaining_note_data, 'skipped', current_failures)
-                    patient_report[key] = {'failure_count': str(current_failures), 'status': 'skipped'}
-                    helper.log_print(f"Marked {remaining_note_data['patient_first_name']} {remaining_note_data['patient_last_name']} as skipped (attempt {current_failures}/3)")
+                    helper.save_patient_to_report(note_data, 'failed', current_failures)
+                    patient_report[key] = {'failure_count': str(current_failures), 'status': 'failed'}
+                    
+                    helper.log_print(f"Patient note failed (attempt {current_failures}/{MAX_PATIENT_FAILURES})")
+                    
+                    # Call error API if failures exceed threshold
+                    if current_failures >= MAX_PATIENT_FAILURES:
+                        patient_name = f"{note_data['patient_first_name']} {note_data['patient_last_name']}"
+                        log_error_to_portal(
+                            patient_name=patient_name,
+                            patient_dob=note_data.get('patient_dob', ''),
+                            clinic_name=note_data['clinic_name'],
+                            emr_system=note_data.get('emr_system', 'eIVF'),
+                            error_title="Patient Note Failed"
+                        )
+                    
+                    fail_count += 1
+                    
+                    # Raise exception to trigger restart
+                    raise RestartEivfException("Note entry failed")
                 
-                # Close eIVF and return to continue with next clinic
-                try:
-                    login.close_application(window)
-                except:
-                    login.kill_application("eIVF.exe")
+                is_first = False
+                time.sleep(3)
+                
+            except Exception as e:
+                if "eivf_window_not_found" in str(e):
+                    # eIVF window not found - raise restart exception
+                    raise RestartEivfException("eIVF window not found")
+                    
+                elif "patient_search_timeout" in str(e):
+                    # Track timeout failure for current patient
+                    key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}"
+                    current_failures = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
+                    helper.save_patient_to_report(note_data, 'timeout', current_failures)
+                    patient_report[key] = {'failure_count': str(current_failures), 'status': 'timeout'}
+                    
+                    helper.log_print(f"Patient search timeout (attempt {current_failures}/{MAX_PATIENT_FAILURES})")
+                    
+                    # Call error API if failures exceed threshold
+                    if current_failures >= MAX_PATIENT_FAILURES:
+                        patient_name = f"{note_data['patient_first_name']} {note_data['patient_last_name']}"
+                        log_error_to_portal(
+                            patient_name=patient_name,
+                            patient_dob=note_data.get('patient_dob', ''),
+                            clinic_name=note_data['clinic_name'],
+                            emr_system=note_data.get('emr_system', 'eIVF'),
+                            error_title="Patient Search Timeout"
+                        )
+                    
+                    fail_count += 1
+                    
+                    # Raise exception to trigger restart
+                    raise RestartEivfException("Patient search timeout")
+                    
+                elif "patient_verification_failed" in str(e):
+                    # Track verification failures
+                    key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}"
+                    current_failures = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
+                    helper.save_patient_to_report(note_data, 'verification_failed', current_failures)
+                    patient_report[key] = {'failure_count': str(current_failures), 'status': 'verification_failed'}
+                    
+                    helper.log_print(f"Verification failed ({current_failures}/{MAX_PATIENT_FAILURES})")
+                    
+                    # Call error API if failures exceed threshold
+                    if current_failures >= MAX_PATIENT_FAILURES:
+                        patient_name = f"{note_data['patient_first_name']} {note_data['patient_last_name']}"
+                        log_error_to_portal(
+                            patient_name=patient_name,
+                            patient_dob=note_data.get('patient_dob', ''),
+                            clinic_name=note_data['clinic_name'],
+                            emr_system=note_data.get('emr_system', 'eIVF'),
+                            error_title="Patient Verification Failed"
+                        )
+                    
+                    fail_count += 1
+                    
+                    # Raise exception to trigger restart
+                    raise RestartEivfException("Patient verification failed")
+                else:
+                    helper.log_print(f"ERROR: {str(e)}")
+                    break
+                    
+        except RestartEivfException as e:
+            # Note entry failed - restart application
+            helper.log_print(f"\n{'='*60}")
+            helper.log_print(f"Restarting eIVF: {str(e)}")
+            helper.log_print(f"{'='*60}\n")
+            
+            # Kill eIVF
+            login.kill_application("eIVF.exe")
+            time.sleep(2)
+            
+            # Restart application
+            helper.log_print("Restarting eIVF...")
+            app, window = login.open_application(APP_PATH, TARGET_TITLE)
+            if not app or not window:
+                helper.log_print("Failed to restart eIVF - skipping remaining notes")
                 return success_count, fail_count
-                
-            elif "patient_verification_failed" in str(e):
-                # Track verification failures
-                key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}"
-                current_failures = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
-                helper.save_patient_to_report(note_data, 'verification_failed', current_failures)
-                patient_report[key] = {'failure_count': str(current_failures), 'status': 'verification_failed'}
-                
-                helper.log_print(f"Verification failed ({current_failures}/{MAX_PATIENT_FAILURES})")
-                
-                # Call error API if failures exceed threshold
-                if current_failures >= MAX_PATIENT_FAILURES:
-                    patient_name = f"{note_data['patient_first_name']} {note_data['patient_last_name']}"
-                    log_error_to_portal(
-                        patient_name=patient_name,
-                        patient_dob=note_data.get('patient_dob', ''),
-                        clinic_name=note_data['clinic_name'],
-                        emr_system=note_data.get('emr_system', 'eIVF'),
-                        error_title="Patient Verification Failed"
-                    )
-                
-                fail_count += 1
-            else:
-                helper.log_print(f"ERROR: {str(e)}")
-                break
+            
+            # Re-login
+            if not login.login(window, clinic['Username'], clinic['Password1'], 
+                               clinic['clinic_name_sf'], clinic['URL'], clinic['login_status']):
+                helper.log_print("Re-login failed - skipping remaining notes")
+                return success_count, fail_count
+            
+            helper.log_print("eIVF restarted and logged in successfully")
+            is_first = True  # Reset to first patient mode
+            continue  # Continue to next patient
     
     return success_count, fail_count
 
@@ -277,7 +296,7 @@ def main():
     # Initialize
     helper.init_log_file(None)
     helper.init_log_queue_manager()
-    helper.init_heartbeat()
+    #helper.init_heartbeat()
     helper.start_recording(output_dir="recordings", fps=5, quality="medium")
     helper.log_print("=== eIVF Note Bot Started ===")
     

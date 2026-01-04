@@ -65,6 +65,14 @@ def change_configuration(window, http_address, facility_name):
             time.sleep(0.2)
             http_field.type_keys("{BACKSPACE}", with_spaces=True)
             time.sleep(0.2)
+
+            #Doing this two times
+            facility_field.double_click_input()
+            time.sleep(0.2)
+            facility_field.type_keys("{BACKSPACE}", with_spaces=True)
+            time.sleep(0.2)
+
+            
             # Type new HTTP address
             http_field.type_keys(http_address, with_spaces=True)
             time.sleep(0.5)
