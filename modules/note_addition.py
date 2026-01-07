@@ -206,7 +206,12 @@ def click_save_button():
             time.sleep(0.2)
             save_button.click_input()
             helper.log_print("Save button clicked successfully!")
-            time.sleep(1)
+            time.sleep(0.5)
+            
+            # Take screenshot after save
+            helper.take_screenshot(prefix="note_saved")
+            
+            time.sleep(0.5)
             return True
             
         except Exception as e:
@@ -228,7 +233,12 @@ def click_save_button():
                 time.sleep(0.2)
                 save_button.click_input()
                 helper.log_print("Save button clicked successfully!")
-                time.sleep(1)
+                time.sleep(0.5)
+                
+                # Take screenshot after save
+                helper.take_screenshot(prefix="note_saved")
+                
+                time.sleep(0.5)
                 return True
             except Exception as e2:
                 helper.log_print(f"Fallback also failed: {e2}")

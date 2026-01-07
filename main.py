@@ -177,12 +177,13 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
                     update_api(note_data['note_id'])
                 else:
                     # Track failure count
-                    key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}"
+                    key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}_{note_data['note_id']}"
                     current_failures = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
                     helper.save_patient_to_report(note_data, 'failed', current_failures)
                     patient_report[key] = {'failure_count': str(current_failures), 'status': 'failed'}
                     
                     helper.log_print(f"Patient note failed (attempt {current_failures}/{MAX_PATIENT_FAILURES})")
+                    helper.take_screenshot(prefix="note_entry_failed")
                     
                     # Call error API if failures exceed threshold
                     if current_failures >= MAX_PATIENT_FAILURES:
@@ -206,16 +207,18 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
             except Exception as e:
                 if "eivf_window_not_found" in str(e):
                     # eIVF window not found - raise restart exception
+                    helper.take_screenshot(prefix="eivf_window_not_found")
                     raise RestartEivfException("eIVF window not found")
                     
                 elif "patient_search_timeout" in str(e):
-                    # Track timeout failure for current patient
-                    key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}"
+                    # Track timeout failure for current note
+                    key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}_{note_data['note_id']}"
                     current_failures = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
                     helper.save_patient_to_report(note_data, 'timeout', current_failures)
                     patient_report[key] = {'failure_count': str(current_failures), 'status': 'timeout'}
                     
                     helper.log_print(f"Patient search timeout (attempt {current_failures}/{MAX_PATIENT_FAILURES})")
+                    helper.take_screenshot(prefix="patient_search_timeout")
                     
                     # Call error API if failures exceed threshold
                     if current_failures >= MAX_PATIENT_FAILURES:
@@ -235,12 +238,13 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
                     
                 elif "patient_verification_failed" in str(e):
                     # Track verification failures
-                    key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}"
+                    key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}_{note_data['note_id']}"
                     current_failures = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
                     helper.save_patient_to_report(note_data, 'verification_failed', current_failures)
                     patient_report[key] = {'failure_count': str(current_failures), 'status': 'verification_failed'}
                     
                     helper.log_print(f"Verification failed ({current_failures}/{MAX_PATIENT_FAILURES})")
+                    helper.take_screenshot(prefix="patient_verification_failed")
                     
                     # Call error API if failures exceed threshold
                     if current_failures >= MAX_PATIENT_FAILURES:
@@ -259,6 +263,7 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
                     raise RestartEivfException("Patient verification failed")
                 else:
                     helper.log_print(f"ERROR: {str(e)}")
+                    helper.take_screenshot(prefix="general_error")
                     break
                     
         except RestartEivfException as e:
@@ -266,6 +271,9 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
             helper.log_print(f"\n{'='*60}")
             helper.log_print(f"Restarting eIVF: {str(e)}")
             helper.log_print(f"{'='*60}\n")
+            
+            # Take screenshot before restart
+            helper.take_screenshot(prefix="restart_eivf")
             
             # Kill eIVF
             login.kill_application("eIVF.exe")
@@ -276,15 +284,18 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
             app, window = login.open_application(APP_PATH, TARGET_TITLE)
             if not app or not window:
                 helper.log_print("Failed to restart eIVF - skipping remaining notes")
+                helper.take_screenshot(prefix="restart_failed")
                 return success_count, fail_count
             
             # Re-login
             if not login.login(window, clinic['Username'], clinic['Password1'], 
                                clinic['clinic_name_sf'], clinic['URL'], clinic['login_status']):
                 helper.log_print("Re-login failed - skipping remaining notes")
+                helper.take_screenshot(prefix="relogin_failed")
                 return success_count, fail_count
             
             helper.log_print("eIVF restarted and logged in successfully")
+            
             is_first = True  # Reset to first patient mode
             continue  # Continue to next patient
     
@@ -305,72 +316,79 @@ def main():
     if helper.set_screen_resolution(1920, 1080):
         helper.get_and_log_screen_resolution("After")
     
-    running = True
-    while running:
-        try:
-            # Fetch data from API
-            helper.check_and_wait_if_paused()
-            clinics, all_notes = data_from_api()
-            if clinics is None or all_notes is None:
-                raise Exception("No Data Found")
-            
-            helper.log_print(f"Fetched {len(clinics)} clinics, {len(all_notes)} notes")
-            
-            # Filter already processed patients
-            patient_report = helper.load_patient_report()
-            notes_to_process, skipped = helper.filter_notes_by_report(all_notes, patient_report)
-            
-            if skipped:
-                helper.log_print(f"Skipping {len(skipped)} already processed patients")
-            
-            if len(notes_to_process) == 0:
-                helper.log_print("No new notes to process")
-                raise Exception("No Data Found")
-            
-            helper.log_print(f"Processing {len(notes_to_process)} notes")
-            
-            # Process each clinic
-            total_success = 0
-            total_fail = 0
-            previous_url = None
-            
-            for _, clinic in clinics.iterrows():
-                clinic_notes = notes_to_process[
-                    notes_to_process['clinic_name'] == clinic['Clinic_Name']
-                ].reset_index(drop=True)
+    try:
+        running = True
+        while running:
+            try:
+                # Fetch data from API
+                helper.check_and_wait_if_paused()
+                clinics, all_notes = data_from_api()
+                if clinics is None or all_notes is None:
+                    raise Exception("No Data Found")
                 
-                if len(clinic_notes) == 0:
-                    continue
+                helper.log_print(f"Fetched {len(clinics)} clinics, {len(all_notes)} notes")
                 
-                success, fail = process_clinic(clinic, clinic_notes, patient_report, previous_url)
-                total_success += success
-                total_fail += fail
+                # Filter already processed patients
+                patient_report = helper.load_patient_report()
+                notes_to_process, skipped = helper.filter_notes_by_report(all_notes, patient_report)
                 
-                # Track current URL for next clinic
-                previous_url = clinic['URL']
-            
-            # Summary
-            helper.log_print(f"\n{'='*60}")
-            helper.log_print(f"SESSION SUMMARY: {total_success} success, {total_fail} failed")
-            helper.log_print(f"{'='*60}")
-            
-        except KeyboardInterrupt:
-            helper.log_print("\n=== Bot stopped by user ===")
-            helper.stop_recording()
-            running = False
-            
-        except Exception as e:
-            helper.stop_recording()
-            helper.log_print(f"Error: {str(e)}")
-            helper.log_print(traceback.format_exc())
-            
-            if "No Data" in str(e):
-                helper.log_print("Waiting 30 seconds...")
-                time.sleep(30)
-            elif "Login Issue" in str(e):
-                helper.log_print("Retrying login...")
-            else:
+                if skipped:
+                    helper.log_print(f"Skipping {len(skipped)} already processed patients")
+                
+                if len(notes_to_process) == 0:
+                    helper.log_print("No new notes to process")
+                    raise Exception("No Data Found")
+                
+                helper.log_print(f"Processing {len(notes_to_process)} notes")
+                
+                # Process each clinic
+                total_success = 0
+                total_fail = 0
+                previous_url = None
+                
+                for _, clinic in clinics.iterrows():
+                    clinic_notes = notes_to_process[
+                        notes_to_process['clinic_name'] == clinic['Clinic_Name']
+                    ].reset_index(drop=True)
+                    
+                    if len(clinic_notes) == 0:
+                        continue
+                    
+                    success, fail = process_clinic(clinic, clinic_notes, patient_report, previous_url)
+                    total_success += success
+                    total_fail += fail
+                    
+                    # Track current URL for next clinic
+                    previous_url = clinic['URL']
+                
+                # Summary
+                helper.log_print(f"\n{'='*60}")
+                helper.log_print(f"SESSION SUMMARY: {total_success} success, {total_fail} failed")
+                helper.log_print(f"{'='*60}")
+                
+            except KeyboardInterrupt:
+                helper.log_print("\n=== Bot stopped by user ===")
+                helper.take_screenshot(prefix="bot_stopped")
                 running = False
+                
+            except Exception as e:
+                helper.log_print(f"Error: {str(e)}")
+                helper.log_print(traceback.format_exc())
+                
+                if "No Data" in str(e):
+                    helper.log_print("Waiting 30 seconds...")
+                    time.sleep(30)
+                elif "Login Issue" in str(e):
+                    helper.log_print("Retrying login...")
+                    helper.take_screenshot(prefix="login_issue")
+                else:
+                    helper.take_screenshot(prefix="error_main_loop")
+                    running = False
+    
+    finally:
+        # Stop recording when bot ends
+        helper.log_print("Stopping recording...")
+        helper.stop_recording()
 
 
 if __name__ == "__main__":

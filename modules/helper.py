@@ -484,6 +484,40 @@ def stop_recording():
         screen_recorder = None
 
 
+def take_screenshot(prefix="screenshot"):
+    """
+    Take a screenshot and save it to the recordings folder.
+    
+    Args:
+        prefix: Prefix for the screenshot filename (default: "screenshot")
+    
+    Returns:
+        str: Path to saved screenshot file, or None if failed
+    """
+    try:
+        from PIL import ImageGrab
+        
+        # Create recordings directory if it doesn't exist
+        output_dir = "recordings"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{prefix}_{timestamp}.png"
+        filepath = os.path.join(output_dir, filename)
+        
+        # Capture screenshot
+        screenshot = ImageGrab.grab()
+        screenshot.save(filepath)
+        
+        log_print(f"Screenshot saved: {filepath}")
+        return filepath
+        
+    except Exception as e:
+        log_print(f"Error taking screenshot: {str(e)}")
+        return None
+
+
 # === Patient Report Functions ===
 
 def get_daily_report_file():
@@ -501,7 +535,7 @@ def load_patient_report():
         with open(report_file, 'r', newline='', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                key = f"{row['patient_phone']}_{row['patient_first_name']}_{row['clinic_name']}"
+                key = f"{row['patient_phone']}_{row['patient_first_name']}_{row['clinic_name']}_{row['note_id']}"
                 report[key] = row
     return report
 
@@ -530,12 +564,12 @@ def save_patient_to_report(note_data, status, failure_count=0):
 
 
 def filter_notes_by_report(notes, patient_report):
-    """Filter out already processed or max-failed patients."""
+    """Filter out already processed or max-failed notes."""
     skipped = []
     indices_to_keep = []
     
     for idx, note in notes.iterrows():
-        key = f"{note['patient_phone']}_{note['patient_first_name']}_{note['clinic_name']}"
+        key = f"{note['patient_phone']}_{note['patient_first_name']}_{note['clinic_name']}_{note['note_id']}"
         
         if key in patient_report:
             record = patient_report[key]

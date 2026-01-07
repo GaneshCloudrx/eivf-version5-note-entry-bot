@@ -30,9 +30,12 @@ class ScreenRecorder:
         self.fps = fps
         self.quality = quality
         self.recording = False
-        self.frames = []
         self.thread = None
         self.lock = threading.Lock()
+        self.video_writer = None  # VideoWriter instance (created in recording thread)
+        self.frame_count = 0  # Track number of frames captured
+        self.initial_width = None  # Store initial resolution for consistency
+        self.initial_height = None
         # Don't create mss() here - create it in the recording thread
         
         # Quality settings for video encoding
@@ -59,7 +62,7 @@ class ScreenRecorder:
             return False
         
         self.recording = True
-        self.frames = []
+        self.frame_count = 0
         
         # Start recording thread
         self.thread = threading.Thread(target=self._record_loop, daemon=True)
@@ -83,35 +86,77 @@ class ScreenRecorder:
         if self.thread:
             self.thread.join(timeout=10)
         
-        # Save video
-        if self.frames:
-            try:
-                self._save_video()
-                log_print(f"Screen recording saved: {self.filename}")
+        # Close video writer (frames are already written to disk)
+        try:
+            with self.lock:
+                if self.video_writer is not None:
+                    self.video_writer.release()
+                    self.video_writer = None
+            
+            # Check if file exists and has content
+            if os.path.exists(self.filename) and os.path.getsize(self.filename) > 0:
+                file_size_mb = os.path.getsize(self.filename) / (1024 * 1024)
+                log_print(f"Screen recording saved: {self.filename} ({file_size_mb:.2f} MB, {self.frame_count} frames)")
                 return self.filename
-            except Exception as e:
-                log_print(f"Error saving video: {str(e)}")
-                import traceback
-                log_print(f"Traceback: {traceback.format_exc()}")
+            else:
+                log_print("No frames captured - video file is empty or doesn't exist")
                 return None
-        else:
-            log_print("No frames captured - nothing to save")
+        except Exception as e:
+            error_msg = str(e) if e else "Unknown error"
+            error_type = type(e).__name__
+            log_print(f"Error closing video file: {error_type}: {error_msg}")
+            import traceback
+            log_print(f"Traceback: {traceback.format_exc()}")
             return None
     
     def _record_loop(self):
-        """Main recording loop - captures screen frames."""
+        """Main recording loop - captures screen frames and writes directly to disk."""
         # Create mss instance in this thread (required for thread-local storage)
         sct = mss()
         
         frame_interval = 1.0 / self.fps
         last_capture_time = time.time()
         
-        # Get screen dimensions (primary monitor)
+        # Get screen dimensions (primary monitor) - check dynamically each time
         monitor = sct.monitors[1]  # monitors[0] is all monitors, [1] is primary
-        width = monitor["width"]
-        height = monitor["height"]
+        initial_width = monitor["width"]
+        initial_height = monitor["height"]
         
-        log_print(f"Recording screen: {width}x{height} at {self.fps} FPS")
+        # Store initial resolution for consistency (will resize frames if resolution changes)
+        with self.lock:
+            self.initial_width = initial_width
+            self.initial_height = initial_height
+        
+        log_print(f"Recording screen: {initial_width}x{initial_height} at {self.fps} FPS")
+        log_print("Note: If resolution changes during recording, frames will be resized to maintain consistency")
+        
+        # Initialize video writer - write directly to disk
+        try:
+            fourcc = self.video_settings["fourcc"]
+            with self.lock:
+                self.video_writer = cv2.VideoWriter(
+                    self.filename,
+                    fourcc,
+                    self.fps,
+                    (initial_width, initial_height)
+                )
+                
+                if not self.video_writer.isOpened():
+                    raise Exception(f"Failed to open video writer for {self.filename}")
+            
+            log_print(f"Video writer initialized - writing frames directly to disk")
+        except Exception as e:
+            error_msg = str(e) if e else "Unknown error"
+            error_type = type(e).__name__
+            log_print(f"ERROR: Failed to initialize video writer: {error_type}: {error_msg}")
+            import traceback
+            log_print(f"Traceback: {traceback.format_exc()}")
+            self.recording = False
+            return
+        
+        # Main recording loop
+        consecutive_errors = 0
+        max_consecutive_errors = 10
         
         while self.recording:
             try:
@@ -119,63 +164,82 @@ class ScreenRecorder:
                 
                 # Capture frame if enough time has passed
                 if current_time - last_capture_time >= frame_interval:
+                    # Get current monitor dimensions (resolution may have changed)
+                    current_monitor = sct.monitors[1]
+                    current_width = current_monitor["width"]
+                    current_height = current_monitor["height"]
+                    
                     # Capture screen
-                    screenshot = sct.grab(monitor)
+                    screenshot = sct.grab(current_monitor)
                     
                     # Convert to numpy array and then to BGR for OpenCV
                     img = np.array(screenshot)
                     img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
                     
-                    # Store frame
+                    # Handle resolution changes: resize frame to match initial resolution
                     with self.lock:
-                        self.frames.append(img.copy())
+                        if self.initial_width is not None and self.initial_height is not None:
+                            img_height, img_width = img.shape[:2]
+                            
+                            # Check if resolution changed
+                            if img_width != self.initial_width or img_height != self.initial_height:
+                                # Resize frame to match initial resolution
+                                img = cv2.resize(img, (self.initial_width, self.initial_height), interpolation=cv2.INTER_LINEAR)
+                                # Log resolution change (only once per change to avoid spam)
+                                if self.frame_count == 0 or (self.frame_count % 100 == 0):
+                                    log_print(f"Resolution changed: {img_width}x{img_height} -> {self.initial_width}x{self.initial_height} (resized)")
+                        
+                        # Write frame directly to disk (no memory accumulation!)
+                        if self.video_writer is not None and self.video_writer.isOpened():
+                            self.video_writer.write(img)
+                            self.frame_count += 1
+                            
+                            # Log progress every 100 frames
+                            if self.frame_count % 100 == 0:
+                                log_print(f"Recorded {self.frame_count} frames...")
                     
+                    consecutive_errors = 0  # Reset error counter on success
                     last_capture_time = current_time
                 else:
                     # Sleep a bit to avoid busy waiting
                     time.sleep(0.01)
                     
+            except MemoryError as e:
+                # Memory errors are critical - log and stop
+                error_msg = str(e) if e else "Out of memory"
+                log_print(f"CRITICAL: Memory error capturing frame: {error_msg}")
+                log_print("Stopping recording due to memory issues...")
+                self.recording = False
+                break
             except Exception as e:
                 # Log error but continue recording
-                log_print(f"Error capturing frame: {str(e)}")
+                error_msg = str(e) if e else "Unknown error"
+                error_type = type(e).__name__
+                if not error_msg or error_msg.strip() == "":
+                    error_msg = f"{error_type} occurred"
+                
+                log_print(f"Error capturing frame: {error_type}: {error_msg}")
+                
+                consecutive_errors += 1
+                if consecutive_errors >= max_consecutive_errors:
+                    log_print(f"Too many consecutive errors ({consecutive_errors}), stopping recording...")
+                    self.recording = False
+                    break
+                
                 time.sleep(0.1)
         
-        log_print(f"Recording stopped - captured {len(self.frames)} frames")
+        # Clean up video writer
+        try:
+            with self.lock:
+                if self.video_writer is not None:
+                    self.video_writer.release()
+                    self.video_writer = None
+        except Exception as e:
+            error_msg = str(e) if e else "Unknown error"
+            log_print(f"Error releasing video writer: {error_msg}")
+        
+        log_print(f"Recording stopped - captured {self.frame_count} frames")
     
-    def _save_video(self):
-        """Save captured frames to video file."""
-        if not self.frames:
-            log_print("No frames to save")
-            return
-        
-        # Get frame dimensions from first frame
-        height, width = self.frames[0].shape[:2]
-        
-        # Create video writer
-        fourcc = self.video_settings["fourcc"]
-        out = cv2.VideoWriter(
-            self.filename,
-            fourcc,
-            self.fps,
-            (width, height)
-        )
-        
-        if not out.isOpened():
-            raise Exception(f"Failed to open video writer for {self.filename}")
-        
-        # Write all frames
-        log_print(f"Saving {len(self.frames)} frames to video...")
-        for i, frame in enumerate(self.frames):
-            out.write(frame)
-            if (i + 1) % 100 == 0:
-                log_print(f"Saved {i + 1}/{len(self.frames)} frames...")
-        
-        # Release video writer
-        out.release()
-        
-        # Get file size
-        file_size_mb = os.path.getsize(self.filename) / (1024 * 1024)
-        log_print(f"Video saved: {self.filename} ({file_size_mb:.2f} MB)")
     
     def is_recording(self):
         """Check if currently recording."""

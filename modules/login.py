@@ -114,6 +114,10 @@ def open_application(app_path, target_title, max_wait_time=30):
         import traceback
         helper.log_print(f"Traceback: {traceback.format_exc()}")
 
+    # Kill any background eIVF processes before giving up
+    helper.log_print("Killing any background eIVF processes...")
+    kill_application("eIVF.exe")
+    
     helper.log_print("Failed to open application")
     return None, None
 
@@ -197,13 +201,53 @@ def dismiss_update_wizard():
 
 
 def kill_application(process_name):
+    """
+    Kill all instances of a process by name and wait for termination.
+    """
+    killed_any = False
     for proc in psutil.process_iter(['pid', 'name']):
         try:
             if proc.info['name'].lower() == process_name.lower():
                 print(f"Killing {process_name} (PID: {proc.info['pid']})")
                 proc.kill()
+                killed_any = True
         except(psutil.NoSuchProcess, psutil.AccessDenied):
             pass
+    
+    # If we killed any processes, wait for them to terminate
+    if killed_any:
+        time.sleep(2)
+        
+        # Verify all instances are terminated
+        max_wait = 5
+        for _ in range(max_wait):
+            still_running = False
+            for proc in psutil.process_iter(['pid', 'name']):
+                try:
+                    if proc.info['name'].lower() == process_name.lower():
+                        still_running = True
+                        break
+                except(psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            
+            if not still_running:
+                print(f"{process_name} fully terminated")
+                break
+            
+            time.sleep(1)
+            print(f"Waiting for {process_name} to terminate...")
+        
+        # Final force kill if still running
+        for proc in psutil.process_iter(['pid', 'name']):
+            try:
+                if proc.info['name'].lower() == process_name.lower():
+                    print(f"Force killing stubborn process {process_name} (PID: {proc.info['pid']})")
+                    proc.terminate()
+                    time.sleep(0.5)
+                    if proc.is_running():
+                        proc.kill()
+            except(psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
 
 
 def close_application(window):
