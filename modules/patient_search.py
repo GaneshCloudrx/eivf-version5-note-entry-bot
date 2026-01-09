@@ -170,10 +170,17 @@ def search_patient_by_phone_number_and_first_name_ctrl_id(phone_number, first_na
         patient_search = app.window(class_name="ThunderRT6FormDC", title_re=".*Patient Search.*")
         patient_search.wait("visible", timeout=10)
         helper.log_print(f"Found Patient Search window")
+
+        
         
         # Step 1: Click Phone Number radio button
         phone_number_radio = patient_search.child_window(class_name="ThunderRT6OptionButton", title="Phone  Number")
         phone_number_radio.click()
+        time.sleep(0.5)
+
+        # Step 1.5: Click search button
+        search_button = patient_search.child_window(class_name="ThunderRT6CommandButton", control_id=1)
+        search_button.click_input()
         time.sleep(0.5)
         
         # Step 2: Enter phone number
@@ -201,6 +208,19 @@ def search_patient_by_phone_number_and_first_name_ctrl_id(phone_number, first_na
         search_textbox.set_focus()
         search_textbox.type_keys("^a{BACKSPACE}" + first_name)
         time.sleep(0.5)
+        
+        # Step 5a: Navigate through fields - Tab, Tab, Down Arrow
+        # Send keys to the patient_search window instead of specific textbox
+        helper.log_print("Navigating through search fields...")
+        patient_search.type_keys("{TAB}")
+        time.sleep(1)
+        
+        patient_search.type_keys("{TAB}")
+        time.sleep(1)
+        
+        patient_search.type_keys("{DOWN}")
+        time.sleep(1)
+        
         
         # Step 6: Click search to select patient
         search_button = patient_search.child_window(class_name="ThunderRT6CommandButton", control_id=4)
