@@ -308,13 +308,17 @@ def main():
     helper.init_log_file(None)
     helper.init_log_queue_manager()
     #helper.init_heartbeat()
-    helper.start_recording(output_dir="recordings", fps=5, quality="medium")
     helper.log_print("=== eIVF Note Bot Started ===")
     
-    # Set screen resolution
+    # Set screen resolution FIRST
     helper.get_and_log_screen_resolution("Before")
     if helper.set_screen_resolution(1920, 1080):
         helper.get_and_log_screen_resolution("After")
+        # Wait for resolution to fully apply before starting recording
+        time.sleep(2)
+    
+    # Start recording AFTER resolution is set
+    helper.start_recording(output_dir="recordings", fps=5, quality="medium")
     
     try:
         running = True
