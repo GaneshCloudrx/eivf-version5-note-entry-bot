@@ -54,6 +54,21 @@ def set_color(color, window_title="eivf", window_class="ThunderRT6MDIForm"):
                         element = main_window.child_window(auto_id="25", class_name="ThunderRT6CommandButton")
                         element.click_input()
                         helper.log_print("4. Saved the changes")
+                        time.sleep(1)
+
+                        helper.log_print(f"1. Found main eIVF window (Title: '{win_title}', Class: {win_class}, PID: {process_id})")
+                        main_window.click_input(coords=(460,232))
+                        time.sleep(0.1)
+                        helper.log_print("2. Selected the recently added comment")
+                        main_window.click_input(coords=color_coordinates[color])
+                        time.sleep(0.1)
+                        helper.log_print(f"3. Selected the color: {color}")
+                        time.sleep(0.1)
+                        element = main_window.child_window(auto_id="25", class_name="ThunderRT6CommandButton")
+                        element.click_input()
+                        helper.log_print("4. Saved the changes")
+                        time.sleep(1)
+                        
                         return True
                 except Exception:
                     # Skip windows that can't be accessed (common for system windows)
