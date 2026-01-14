@@ -48,7 +48,7 @@ def process_single_note(note_data, clinic_data, is_first):
     
     # Step 1: Search patient
     try:
-        if not patient_search.search_patient_by_phone_number_and_first_name_ctrl_id(phone, first_name, is_first):
+        if not patient_search.search_patient_by_phone_number_and_first_name_ctrl_id(phone, first_name, is_first, clinic_data.get('clinic_name_sf')):
             helper.log_print(f"Patient search failed for {first_name} {last_name}")
             return False
     except Exception as e:

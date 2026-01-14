@@ -104,24 +104,38 @@ def click_patient_search_button():
         return False
 
 
-def open_patient_search_from_pane(main_window):
-    """Click on Patient Explorer using relative coordinates."""
-    helper.log_print("Opening Patient Explorer...")
+def open_patient_search_from_pane(main_window, clinic_name_sf=None):
+    """
+    Click on Patient Explorer based on clinic type.
+    For IVFMD: Use sidebar icon method
+    For others: Use relative coordinates method
+    """
+    helper.log_print(f"Opening Patient Explorer for clinic: {clinic_name_sf}...")
+    
     try:
-        # Reconnect using win32 backend
-        app = Application(backend="win32").connect(class_name="ThunderRT6MDIForm", title="eIVF")
-        main_window_win32 = app.window(class_name="ThunderRT6MDIForm", title="eIVF")
-        
-        # Calculate relative coordinates from absolute position (181, 87)
-        rect = main_window_win32.rectangle()
-        click_x = 181 - rect.left
-        click_y = 87 - rect.top
-        
-        helper.log_print(f"Clicking at relative coords ({click_x}, {click_y})")
-        main_window_win32.click_input(coords=(click_x, click_y))
-        time.sleep(1)
-        helper.log_print("Patient Explorer clicked successfully")
-        return True
+        # Check if clinic is IVFMD
+        if clinic_name_sf and clinic_name_sf == "IVFMD":
+            helper.log_print("Using sidebar icon method for IVFMD clinic")
+            result = click_sidebar_icon(main_window, 2)  # Patient Explorer is icon index 2
+            if not result:
+                raise Exception("Failed to click sidebar icon")
+            return True
+        else:
+            helper.log_print("Using coordinate-based method for non-IVFMD clinic")
+            # Reconnect using win32 backend
+            app = Application(backend="win32").connect(class_name="ThunderRT6MDIForm", title="eIVF")
+            main_window_win32 = app.window(class_name="ThunderRT6MDIForm", title="eIVF")
+            
+            # Calculate relative coordinates from absolute position (181, 87)
+            rect = main_window_win32.rectangle()
+            click_x = 181 - rect.left
+            click_y = 87 - rect.top
+            
+            helper.log_print(f"Clicking at relative coords ({click_x}, {click_y})")
+            main_window_win32.click_input(coords=(click_x, click_y))
+            time.sleep(1)
+            helper.log_print("Patient Explorer clicked successfully")
+            return True
         
     except Exception as e:
         error_str = str(e).lower()
@@ -132,7 +146,7 @@ def open_patient_search_from_pane(main_window):
         return False
 
 
-def search_patient_by_phone_number_and_first_name_ctrl_id(phone_number, first_name, is_first=True):
+def search_patient_by_phone_number_and_first_name_ctrl_id(phone_number, first_name, is_first=True, clinic_name_sf=None):
     """
     Search patient by Phone Number and First Name using win32 backend.
     
@@ -140,6 +154,7 @@ def search_patient_by_phone_number_and_first_name_ctrl_id(phone_number, first_na
         phone_number: Phone number string
         first_name: Patient's first name
         is_first: If True, click Patient Explorer from sidebar; else click Patient Search button
+        clinic_name_sf: Clinic name from Salesforce (used to determine click method)
     
     Returns:
         True if successful, False otherwise
@@ -154,7 +169,7 @@ def search_patient_by_phone_number_and_first_name_ctrl_id(phone_number, first_na
             if not main_window_uia:
                 helper.log_print("Could not find eIVF window")
                 return False
-            if not open_patient_search_from_pane(main_window_uia):
+            if not open_patient_search_from_pane(main_window_uia, clinic_name_sf):
                 helper.log_print("Failed to open Patient Explorer")
                 return False
             time.sleep(2)

@@ -6,13 +6,21 @@ log.txt
 # Configuration files (may contain sensitive data)
 config.py
 
+# Reports and recordings
+reports/
+recordings/
+recording
+*.mp4
+*.csv
+
+# Test folder
+test/
+
 # Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-recording
-*.mp4
 
 # Virtual environments
 venv/
