@@ -213,11 +213,11 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
                 key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}_{note_data['note_id']}"
                 current_attempt = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
                 
-                # Determine search method based on attempt: 1=phone, 2=dob, 3=phone
+                # Determine search method based on attempt: 1=dob, 2=phone, 3=dob
                 if current_attempt == 2:
-                    search_method = 'dob'
-                else:
                     search_method = 'phone'
+                else:
+                    search_method = 'dob'
                 
                 helper.log_print(f"Attempt {current_attempt}/{MAX_PATIENT_FAILURES} using {search_method.upper()} search")
                 

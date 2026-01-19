@@ -325,7 +325,10 @@ def search_patient_by_dob_and_first_name_ctrl_id(dob, first_name, is_first=True,
         # Click the textbox (this is critical!)
         helper.log_print("Clicking DOB textbox...")
         dob_textbox.click_input()
+        time.sleep(0.1) 
+        dob_textbox.type_keys("{HOME}")        # Go to start of field
         time.sleep(0.5)
+
         
         # Type DOB - send each character individually
         helper.log_print(f"Typing DOB: {dob_clean}")
