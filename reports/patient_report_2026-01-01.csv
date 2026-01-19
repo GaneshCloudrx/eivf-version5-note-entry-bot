@@ -1,3 +1,0 @@
-note_id,patient_first_name,patient_last_name,patient_phone,clinic_name,status,failure_count,last_attempt_time
-15548909,LAUREN,PLOCH,8183957667,Southern California Reproductive Center (SCRC),failed,1,2026-01-01 06:52:52
-15548909,LAUREN,PLOCH,8183957667,Southern California Reproductive Center (SCRC),success,0,2026-01-01 06:59:56

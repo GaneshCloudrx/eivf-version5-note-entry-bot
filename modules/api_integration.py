@@ -222,8 +222,8 @@ def log_error_to_portal(patient_name, patient_dob, clinic_name, emr_system, erro
     payload = {
         "type": "error",
         "title": error_title,
-        "server_name": config.API_SERVER_NAME,
-        "bot_name": config.API_BOT_NAME,
+        "server_name": config.MACHINE_NAME,
+        "bot_name": config.BOT_NAME,
         "detail": {
             "name": patient_name,
             "dob": patient_dob,

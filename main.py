@@ -30,26 +30,58 @@ class RestartEivfException(Exception):
     pass
 
 
-def process_single_note(note_data, clinic_data, is_first):
-    """Process a single patient note entry"""
+def process_single_note(note_data, clinic_data, is_first, search_method='phone'):
+    """
+    Process a single patient note entry
+    
+    Args:
+        note_data: Dictionary with patient note data
+        clinic_data: Dictionary with clinic data
+        is_first: Boolean indicating if this is the first note of the clinic
+        search_method: String indicating search method ('phone' or 'dob')
+    """
     helper.log_print(f"\n{'='*60}")
     helper.log_print(f"Processing: {note_data['patient_first_name']} {note_data['patient_last_name']}")
     helper.log_print(f"Phone: {note_data['patient_phone']} | Clinic: {note_data['clinic_name']}")
+    helper.log_print(f"Search Method: {search_method.upper()}")
     helper.log_print(f"{'='*60}")
     
     first_name = note_data['patient_first_name']
     last_name = note_data['patient_last_name']
     phone = note_data['patient_phone']
+    dob = note_data['patient_dob']
     
     # Validate required fields
-    if not first_name or not phone:
-        helper.log_print("ERROR: Missing patient first name or phone")
+    if not first_name:
+        helper.log_print("ERROR: Missing patient first name")
         return False
     
-    # Step 1: Search patient
+    if search_method == 'phone' and not phone:
+        helper.log_print("ERROR: Missing patient phone for phone search")
+        return False
+    
+    if search_method == 'dob' and not dob:
+        helper.log_print("ERROR: Missing patient DOB for DOB search")
+        return False
+    
+    if not dob:
+        helper.log_print("ERROR: Missing patient DOB for verification")
+        return False
+    
+    # Step 1: Search patient using specified method
     try:
-        if not patient_search.search_patient_by_phone_number_and_first_name_ctrl_id(phone, first_name, is_first, clinic_data.get('clinic_name_sf')):
-            helper.log_print(f"Patient search failed for {first_name} {last_name}")
+        if search_method == 'phone':
+            helper.log_print(f"Searching patient by Phone + First Name...")
+            if not patient_search.search_patient_by_phone_number_and_first_name_ctrl_id(phone, first_name, is_first, clinic_data.get('clinic_name_sf')):
+                helper.log_print(f"Patient search by phone failed for {first_name} {last_name}")
+                return False
+        elif search_method == 'dob':
+            helper.log_print(f"Searching patient by DOB + First Name...")
+            if not patient_search.search_patient_by_dob_and_first_name_ctrl_id(dob, first_name, is_first, clinic_data.get('clinic_name_sf')):
+                helper.log_print(f"Patient search by DOB failed for {first_name} {last_name}")
+                return False
+        else:
+            helper.log_print(f"ERROR: Invalid search method '{search_method}'")
             return False
     except Exception as e:
         if "patient_search_timeout" in str(e):
@@ -58,9 +90,9 @@ def process_single_note(note_data, clinic_data, is_first):
         elif "eivf_window_not_found" in str(e):
             # Re-raise to trigger restart
             raise Exception("eivf_window_not_found")
-        helper.log_print(f"Patient search failed for {first_name} {last_name}")
+        helper.log_print(f"Patient search by {search_method} failed for {first_name} {last_name}")
         return False
-    helper.log_print(f"Patient '{first_name} {last_name}' found!")
+    helper.log_print(f"Patient '{first_name} {last_name}' found using {search_method} search!")
     
     # Step 2: Handle alert dialog
     time.sleep(1)
@@ -73,12 +105,20 @@ def process_single_note(note_data, clinic_data, is_first):
         helper.log_print("Failed to click New button")
         return False
     
-    # Step 5: Verify patient in Notes window
+    # Step 5: Verify patient in Notes window by DOB (and last name for DOB searches)
     time.sleep(1)
-    if not notes.verify_patient_explorer_match(first_name, last_name, phone):
-        helper.log_print("ERROR: Patient verification FAILED")
-        raise Exception("patient_verification_failed")
-    helper.log_print("Patient verified!")
+    if search_method == 'dob':
+        # For DOB searches, verify both DOB and last name for enhanced accuracy
+        if not notes.verify_patient_explorer_match(dob, last_name):
+            helper.log_print("ERROR: Patient verification FAILED - DOB or Last Name mismatch")
+            raise Exception("patient_verification_failed")
+        helper.log_print("Patient verified by DOB and Last Name!")
+    else:
+        # For phone searches, verify DOB only
+        if not notes.verify_patient_explorer_match(dob):
+            helper.log_print("ERROR: Patient verification FAILED - DOB mismatch")
+            raise Exception("patient_verification_failed")
+        helper.log_print("Patient verified by DOB!")
     
     # Step 6: Write note
     time.sleep(0.5)
@@ -169,7 +209,19 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
                     notes.close_notes_window()
                     time.sleep(1)
                 
-                if process_single_note(note_data, clinic_data, is_first):
+                # Get current attempt count for this patient note
+                key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}_{note_data['note_id']}"
+                current_attempt = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
+                
+                # Determine search method based on attempt: 1=phone, 2=dob, 3=phone
+                if current_attempt == 2:
+                    search_method = 'dob'
+                else:
+                    search_method = 'phone'
+                
+                helper.log_print(f"Attempt {current_attempt}/{MAX_PATIENT_FAILURES} using {search_method.upper()} search")
+                
+                if process_single_note(note_data, clinic_data, is_first, search_method):
                     success_count += 1
                     helper.save_patient_to_report(note_data, 'success', 0)
                     
@@ -177,29 +229,32 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
                     update_api(note_data['note_id'])
                 else:
                     # Track failure count
-                    key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}_{note_data['note_id']}"
-                    current_failures = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
-                    helper.save_patient_to_report(note_data, 'failed', current_failures)
-                    patient_report[key] = {'failure_count': str(current_failures), 'status': 'failed'}
+                    helper.save_patient_to_report(note_data, 'failed', current_attempt)
+                    patient_report[key] = {'failure_count': str(current_attempt), 'status': 'failed'}
                     
-                    helper.log_print(f"Patient note failed (attempt {current_failures}/{MAX_PATIENT_FAILURES})")
-                    helper.take_screenshot(prefix="note_entry_failed")
+                    helper.log_print(f"Patient note failed (attempt {current_attempt}/{MAX_PATIENT_FAILURES}) with {search_method.upper()} search")
                     
-                    # Call error API if failures exceed threshold
-                    if current_failures >= MAX_PATIENT_FAILURES:
+                    # Screenshot on 2nd and 3rd attempt failures
+                    if current_attempt >= 2:
+                        helper.take_screenshot(prefix=f"note_entry_failed_attempt{current_attempt}")
+                    
+                    # Call error API and raise restart exception if max failures reached
+                    if current_attempt >= MAX_PATIENT_FAILURES:
                         patient_name = f"{note_data['patient_first_name']} {note_data['patient_last_name']}"
                         log_error_to_portal(
                             patient_name=patient_name,
                             patient_dob=note_data.get('patient_dob', ''),
                             clinic_name=note_data['clinic_name'],
                             emr_system=note_data.get('emr_system', 'eIVF'),
-                            error_title="Patient Note Failed"
+                            error_title=f"Patient Note Failed - All {MAX_PATIENT_FAILURES} attempts exhausted"
                         )
-                    
-                    fail_count += 1
-                    
-                    # Raise exception to trigger restart
-                    raise RestartEivfException("Note entry failed")
+                        fail_count += 1
+                        # Raise exception to trigger restart after all attempts exhausted
+                        raise RestartEivfException("Note entry failed after all attempts")
+                    else:
+                        fail_count += 1
+                        # Raise exception to trigger restart for retry
+                        raise RestartEivfException(f"Note entry failed on attempt {current_attempt}, will retry")
                 
                 is_first = False
                 time.sleep(3)
@@ -213,54 +268,66 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
                 elif "patient_search_timeout" in str(e):
                     # Track timeout failure for current note
                     key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}_{note_data['note_id']}"
-                    current_failures = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
-                    helper.save_patient_to_report(note_data, 'timeout', current_failures)
-                    patient_report[key] = {'failure_count': str(current_failures), 'status': 'timeout'}
+                    current_attempt = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
+                    helper.save_patient_to_report(note_data, 'timeout', current_attempt)
+                    patient_report[key] = {'failure_count': str(current_attempt), 'status': 'timeout'}
                     
-                    helper.log_print(f"Patient search timeout (attempt {current_failures}/{MAX_PATIENT_FAILURES})")
-                    helper.take_screenshot(prefix="patient_search_timeout")
+                    # Determine which search method was used
+                    search_method = 'dob' if current_attempt == 2 else 'phone'
                     
-                    # Call error API if failures exceed threshold
-                    if current_failures >= MAX_PATIENT_FAILURES:
+                    helper.log_print(f"Patient search timeout (attempt {current_attempt}/{MAX_PATIENT_FAILURES}) with {search_method.upper()} search")
+                    
+                    # Screenshot on 2nd and 3rd attempt timeouts
+                    if current_attempt >= 2:
+                        helper.take_screenshot(prefix=f"patient_search_timeout_attempt{current_attempt}")
+                    
+                    # Call error API if max failures reached
+                    if current_attempt >= MAX_PATIENT_FAILURES:
                         patient_name = f"{note_data['patient_first_name']} {note_data['patient_last_name']}"
                         log_error_to_portal(
                             patient_name=patient_name,
                             patient_dob=note_data.get('patient_dob', ''),
                             clinic_name=note_data['clinic_name'],
                             emr_system=note_data.get('emr_system', 'eIVF'),
-                            error_title="Patient Search Timeout"
+                            error_title=f"Patient Search Timeout - All {MAX_PATIENT_FAILURES} attempts exhausted"
                         )
                     
                     fail_count += 1
                     
                     # Raise exception to trigger restart
-                    raise RestartEivfException("Patient search timeout")
+                    raise RestartEivfException(f"Patient search timeout on attempt {current_attempt}")
                     
                 elif "patient_verification_failed" in str(e):
                     # Track verification failures
                     key = f"{note_data['patient_phone']}_{note_data['patient_first_name']}_{note_data['clinic_name']}_{note_data['note_id']}"
-                    current_failures = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
-                    helper.save_patient_to_report(note_data, 'verification_failed', current_failures)
-                    patient_report[key] = {'failure_count': str(current_failures), 'status': 'verification_failed'}
+                    current_attempt = int(patient_report.get(key, {}).get('failure_count', 0)) + 1
+                    helper.save_patient_to_report(note_data, 'verification_failed', current_attempt)
+                    patient_report[key] = {'failure_count': str(current_attempt), 'status': 'verification_failed'}
                     
-                    helper.log_print(f"Verification failed ({current_failures}/{MAX_PATIENT_FAILURES})")
-                    helper.take_screenshot(prefix="patient_verification_failed")
+                    # Determine which search method was used
+                    search_method = 'dob' if current_attempt == 2 else 'phone'
                     
-                    # Call error API if failures exceed threshold
-                    if current_failures >= MAX_PATIENT_FAILURES:
+                    helper.log_print(f"Verification failed (attempt {current_attempt}/{MAX_PATIENT_FAILURES}) with {search_method.upper()} search")
+                    
+                    # Screenshot on 2nd and 3rd attempt verification failures
+                    if current_attempt >= 2:
+                        helper.take_screenshot(prefix=f"patient_verification_failed_attempt{current_attempt}")
+                    
+                    # Call error API if max failures reached
+                    if current_attempt >= MAX_PATIENT_FAILURES:
                         patient_name = f"{note_data['patient_first_name']} {note_data['patient_last_name']}"
                         log_error_to_portal(
                             patient_name=patient_name,
                             patient_dob=note_data.get('patient_dob', ''),
                             clinic_name=note_data['clinic_name'],
                             emr_system=note_data.get('emr_system', 'eIVF'),
-                            error_title="Patient Verification Failed"
+                            error_title=f"Patient Verification Failed - All {MAX_PATIENT_FAILURES} attempts exhausted"
                         )
                     
                     fail_count += 1
                     
                     # Raise exception to trigger restart
-                    raise RestartEivfException("Patient verification failed")
+                    raise RestartEivfException(f"Patient verification failed on attempt {current_attempt}")
                 else:
                     helper.log_print(f"ERROR: {str(e)}")
                     helper.take_screenshot(prefix="general_error")

@@ -522,77 +522,96 @@ def close_notes_window():
         return False
 
 
-def verify_patient_explorer_match(expected_first_name, expected_last_name, expected_phone_number):
+def verify_patient_explorer_match(expected_dob, expected_last_name=None):
     """
-    Verify that the patient shown in Notes window matches the expected patient details.
+    Verify that the patient shown in Notes window matches the expected patient DOB and optionally last name.
 
     This is a MANDATORY verification step before writing notes.
+    Checks if the expected DOB string is contained in the patient info text.
+    If last name is provided, also checks if the last name is present (for DOB-based searches).
 
     Args:
-        expected_first_name: Expected first name (string)
-        expected_last_name: Expected last name (string)
-        expected_phone_number: Expected phone number (string, can be in various formats)
+        expected_dob: Expected date of birth (string, format: MMDDYYYY or MM/DD/YYYY)
+        expected_last_name: Expected last name (optional, for enhanced verification in DOB searches)
 
     Returns:
-        True if patient matches, False otherwise
+        True if DOB (and last name if provided) is found in patient info, False otherwise
     """
-    helper.log_print(f"Verifying Notes window shows: {expected_first_name} {expected_last_name}, Phone number: {expected_phone_number}")
+    if expected_last_name:
+        helper.log_print(f"Verifying Notes window contains DOB: {expected_dob} and Last Name: {expected_last_name}")
+    else:
+        helper.log_print(f"Verifying Notes window contains DOB: {expected_dob}")
 
     try:
-        # Get patient details from the Notes window
-        patient_details = get_notes_window_patient_details()
-        if not patient_details:
-            helper.log_print("verify_patient_explorer_match: could not retrieve patient details from Notes window")
+        # Step 1: Format DOB - convert MMDDYYYY to MM/DD/YYYY if needed
+        formatted_dob = expected_dob
+        if len(expected_dob) == 8 and expected_dob.isdigit():
+            # Format: MMDDYYYY -> MM/DD/YYYY
+            formatted_dob = f"{expected_dob[0:2]}/{expected_dob[2:4]}/{expected_dob[4:8]}"
+            helper.log_print(f"Formatted DOB from '{expected_dob}' to '{formatted_dob}'")
+        
+        # Step 2: Find Notes window and extract raw patient info text
+        desktop = Desktop(backend="win32")
+        
+        notes_pid = None
+        for win in desktop.windows():
+            try:
+                title = win.window_text()
+                if "Notes" in title and "Quick Summary" in title:
+                    notes_pid = win.process_id()
+                    helper.log_print(f"Found Notes window: {title}, PID: {notes_pid}")
+                    break
+            except:
+                pass
+        
+        if not notes_pid:
+            helper.log_print("verify_patient_explorer_match: Notes window not found")
             helper.log_print("VERIFICATION FAILED - cannot proceed without verifying patient")
             return False
-
-        # Get actuals
-        actual_first = patient_details.get('first_name', '').strip().lower()
-        actual_last = patient_details.get('last_name', '').strip().lower()
-        actual_phone = patient_details.get('phone_number', '').strip()
-
-        # Normalize phone numbers for comparison (remove spaces, dashes, parentheses)
-        def normalize_phone(phone):
-            if not phone:
-                return ""
-            # Remove all non-digit characters
-            return re.sub(r'\D', '', phone)
         
-        expected_phone_normalized = normalize_phone(expected_phone_number)
-        actual_phone_normalized = normalize_phone(actual_phone)
-
-        # First name: use prefix/contains matching (less strict)
-        # "Jian" should match "Jianyin", "Jianyin" should match "Jian"
-        expected_first_lower = expected_first_name.strip().lower()
-        first_ok = (
-            actual_first == expected_first_lower or  # exact match
-            actual_first.startswith(expected_first_lower) or  # actual starts with expected
-            expected_first_lower.startswith(actual_first)  # expected starts with actual
-        )
+        # Step 3: Connect and get patient info text
+        app = Application(backend="win32").connect(process=notes_pid)
+        notes_window = app.window(title_re=".*Notes.*Quick Summary.*")
         
-        # Phone: normalized comparison
-        phone_ok = (expected_phone_normalized == actual_phone_normalized) if expected_phone_normalized else True
-
-        helper.log_print(
-            f"verify_patient_explorer_match: comparison -> first_ok={first_ok}, phone_ok={phone_ok}")
-        helper.log_print(f"  Expected phone: '{expected_phone_number}' (normalized: '{expected_phone_normalized}')")
-        helper.log_print(f"  Actual phone: '{actual_phone}' (normalized: '{actual_phone_normalized}')")
-
-        all_match = first_ok and phone_ok
-        if all_match:
-            helper.log_print("verify_patient_explorer_match: PASSED")
-        else:
-            helper.log_print("verify_patient_explorer_match: FAILED")
-            if not first_ok:
-                helper.log_print(f"  First name mismatch: expected '{expected_first_name}', got '{actual_first}'")
-            if not phone_ok:
-                helper.log_print(f"  Phone number mismatch: expected '{expected_phone_number}', got '{actual_phone}'")
-            
+        # Find lblTitle label containing patient info
+        lbl_title = notes_window.child_window(class_name_re=".*WindowsForms10\\.STATIC.*", title_re=".*Quick Notes.*")
+        patient_info = lbl_title.window_text()
+        helper.log_print(f"Patient Info Text: {patient_info}")
+        
+        if not patient_info:
+            helper.log_print("verify_patient_explorer_match: could not extract patient info")
+            helper.log_print("VERIFICATION FAILED - cannot proceed without verifying patient")
+            return False
+        
+        # Step 4: Check DOB
+        dob_found = formatted_dob in patient_info
+        
+        if not dob_found:
+            helper.log_print(f"verify_patient_explorer_match: FAILED - DOB '{formatted_dob}' NOT found in patient info")
             # Close Notes window when verification fails
             helper.log_print("Closing Notes window due to verification failure...")
             close_notes_window()
-
-        return all_match
+            return False
+        
+        helper.log_print(f"✓ DOB '{formatted_dob}' found in patient info")
+        
+        # Step 5: Check last name if provided (for DOB-based searches)
+        if expected_last_name:
+            last_name_found = expected_last_name.lower() in patient_info.lower()
+            
+            if not last_name_found:
+                helper.log_print(f"verify_patient_explorer_match: FAILED - Last Name '{expected_last_name}' NOT found in patient info")
+                # Close Notes window when verification fails
+                helper.log_print("Closing Notes window due to verification failure...")
+                close_notes_window()
+                return False
+            
+            helper.log_print(f"✓ Last Name '{expected_last_name}' found in patient info")
+            helper.log_print(f"verify_patient_explorer_match: PASSED - Both DOB and Last Name verified")
+        else:
+            helper.log_print(f"verify_patient_explorer_match: PASSED - DOB verified")
+        
+        return True
 
     except Exception as e:
         helper.log_print(f"verify_patient_explorer_match: error: {e}")

@@ -12,12 +12,12 @@ import threading
 import requests
 from pywinauto import Desktop, mouse
 from pywinauto.keyboard import send_keys
-from config import API_BASE_URL, API_AUTH_HEADER, MACHINE_NAME, BOT_NAME, SCRC_SECRET_KEY, API_LOG_ENABLED, API_LOG_BATCH_SIZE, API_BOT_NAME, API_SERVER_NAME, API_LOG_ENDPOINT, API_TIMEOUT, API_LOG_BATCH_INTERVAL
+from config import API_BASE_URL, API_AUTH_HEADER, MACHINE_NAME, BOT_NAME, SCRC_SECRET_KEY, API_LOG_ENABLED, API_LOG_BATCH_SIZE, API_LOG_ENDPOINT, API_TIMEOUT, API_LOG_BATCH_INTERVAL
 import pyotp
 
 # === Constants ===
 REPORTS_FOLDER = "reports"
-MAX_FAILURES = 2
+MAX_FAILURES = 3
 
 # Global log file
 log_file = None
@@ -153,8 +153,8 @@ class LogQueueManager:
         
         try:
             payload = {
-                "bot_name": API_BOT_NAME,
-                "server_name": API_SERVER_NAME,
+                "bot_name": BOT_NAME,
+                "server_name": MACHINE_NAME,
                 "logs": [
                     {
                         "timestamp": log['timestamp'],

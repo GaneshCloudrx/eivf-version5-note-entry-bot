@@ -49,7 +49,7 @@ def open_application(app_path, target_title, max_wait_time=30):
     try:
         app = Application(backend="uia").start(app_path)
         helper.log_print("Application started! Waiting for window...")
-        
+
         # Give application a moment to start
         time.sleep(2)
         
@@ -96,7 +96,7 @@ def open_application(app_path, target_title, max_wait_time=30):
                 try:
                     win_title = win.window_text()
                     win_class = win.element_info.class_name
-                    
+
                     if win_title == target_title and win_class == target_class:
                         helper.log_print(f"Found window: '{win_title}' (Class: {win_class})")
                         process_id = win.element_info.process_id
@@ -117,7 +117,7 @@ def open_application(app_path, target_title, max_wait_time=30):
     # Kill any background eIVF processes before giving up
     helper.log_print("Killing any background eIVF processes...")
     kill_application("eIVF.exe")
-    
+
     helper.log_print("Failed to open application")
     return None, None
 

@@ -1,8 +1,0 @@
-note_id,patient_first_name,patient_last_name,patient_phone,clinic_name,status,failure_count,last_attempt_time
-15612388,Hana Grace,Mones,7134080962,Advanced Fertility Center of Texas,failed,1,2026-01-09 07:15:22
-15612388,Hana Grace,Mones,7134080962,Advanced Fertility Center of Texas,failed,2,2026-01-09 07:25:24
-"15570984,15570985,15570986,15570987,15570988,15570989,15570990,15570991,15570992",Carmen,Irizarry,3126901955,"Advanced Reproductive Health Centers, LTD- Chicago IVF",failed,1,2026-01-09 07:26:47
-15611628,Hana Grace,Mones,7134080962,Advanced Fertility Center of Texas,verification_failed,1,2026-01-09 07:38:58
-15605317,Lizeth,Silva,9566095588,Advanced Fertility Center of Texas,verification_failed,1,2026-01-09 07:40:30
-15611628,Hana Grace,Mones,7134080962,Advanced Fertility Center of Texas,verification_failed,2,2026-01-09 07:44:06
-15605317,Lizeth,Silva,9566095588,Advanced Fertility Center of Texas,success,0,2026-01-09 07:45:41

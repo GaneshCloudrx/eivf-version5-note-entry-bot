@@ -193,7 +193,7 @@ def search_patient_by_phone_number_and_first_name_ctrl_id(phone_number, first_na
         phone_number_radio.click()
         time.sleep(0.5)
 
-        # Step 1.5: Click search button
+        # Step 1.5: Click clear cross button
         search_button = patient_search.child_window(class_name="ThunderRT6CommandButton", control_id=1)
         search_button.click_input()
         time.sleep(0.5)
@@ -235,12 +235,15 @@ def search_patient_by_phone_number_and_first_name_ctrl_id(phone_number, first_na
         
         patient_search.type_keys("{DOWN}")
         time.sleep(1)
+
+        patient_search.type_keys("{ENTER}")
+        time.sleep(1)
         
         
         # Step 6: Click search to select patient
-        search_button = patient_search.child_window(class_name="ThunderRT6CommandButton", control_id=4)
-        search_button.click()
-        time.sleep(0.5)
+        # search_button = patient_search.child_window(class_name="ThunderRT6CommandButton", control_id=4)
+        # search_button.click()
+        # time.sleep(0.5)
         
         helper.log_print("=== Patient search completed ===")
         return True
@@ -253,6 +256,138 @@ def search_patient_by_phone_number_and_first_name_ctrl_id(phone_number, first_na
         # Check if it's a timeout error
         if "timeout" in error_msg or "timed out" in error_msg:
             # Raise a special exception for timeout that can be caught to skip clinic
+            raise Exception("patient_search_timeout")
+        return False
+
+
+def search_patient_by_dob_and_first_name_ctrl_id(dob, first_name, is_first=True, clinic_name_sf=None):
+    """
+    Search patient by Date of Birth and First Name using win32 backend.
+    
+    Args:
+        dob: Date of birth string (format: MMDDYYYY)
+        first_name: Patient's first name
+        is_first: If True, click Patient Explorer from sidebar; else click Patient Search button
+        clinic_name_sf: Clinic name from Salesforce (used to determine click method)
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    helper.log_print(f"\n=== Searching: DOB={dob}, FirstName={first_name} ===")
+    
+    try:
+        # Step 0: Open Patient Search
+        if is_first:
+            helper.log_print("First note: Opening Patient Explorer from sidebar...")
+            app_uia, main_window_uia = get_eivf_main_window()
+            if not main_window_uia:
+                helper.log_print("Could not find eIVF window")
+                return False
+            if not open_patient_search_from_pane(main_window_uia, clinic_name_sf):
+                helper.log_print("Failed to open Patient Explorer")
+                return False
+            time.sleep(2)
+        else:
+            helper.log_print("Subsequent note: Clicking Patient Search button...")
+            if not click_patient_search_button():
+                helper.log_print("Failed to click Patient Search button")
+                return False
+            time.sleep(2)
+        
+        # Connect using win32 backend
+        app = Application(backend="win32").connect(class_name="ThunderRT6MDIForm", title="eIVF")
+        patient_search = app.window(class_name="ThunderRT6FormDC", title_re=".*Patient Search.*")
+        patient_search.wait("visible", timeout=10)
+        helper.log_print(f"Found Patient Search window")
+        
+        # Step 1: Click DOB radio button (control_id=12)
+        dob_radio = patient_search.child_window(class_name="ThunderRT6OptionButton", control_id=12)
+        dob_radio.click()
+        time.sleep(0.5)
+
+        # Step 1.5: Click clear cross button
+        search_button = patient_search.child_window(class_name="ThunderRT6CommandButton", control_id=1)
+        search_button.click_input()
+        time.sleep(0.5)
+        
+        # Step 2: Enter DOB (remove slashes if present)
+        dob_clean = dob.replace('/', '').replace('-', '').strip()
+        helper.log_print(f"Entering DOB: {dob_clean}")
+        
+        # DOB textbox is AfxOleControl42
+        dob_textbox = patient_search.child_window(class_name="AfxOleControl42")
+        
+        # Set focus first
+        helper.log_print("Setting focus on DOB textbox...")
+        dob_textbox.set_focus()
+        time.sleep(0.3)
+        
+        # Click the textbox (this is critical!)
+        helper.log_print("Clicking DOB textbox...")
+        dob_textbox.click_input()
+        time.sleep(0.5)
+        
+        # Type DOB - send each character individually
+        helper.log_print(f"Typing DOB: {dob_clean}")
+        
+        # # Clear existing content first
+        # patient_search.type_keys("^a")
+        # time.sleep(0.1)
+        # patient_search.type_keys("{BACKSPACE}")
+        # time.sleep(0.1)
+        
+        # Type each character one by one
+        for char in dob_clean:
+            patient_search.type_keys(char)
+            time.sleep(0.05)  # Small delay between each character
+        
+        time.sleep(0.3)
+        helper.log_print(f"DOB typed: {dob_clean}")
+        
+        # Step 3: Click search button
+        search_button = patient_search.child_window(class_name="ThunderRT6CommandButton", control_id=13)
+        search_button.click()
+        time.sleep(0.5)
+        
+        # Re-fetch window after search
+        patient_search = app.window(class_name="ThunderRT6FormDC", title_re=".*Patient Search.*")
+        patient_search.wait("visible", timeout=10)
+        
+        # Step 4: Click First Name radio button
+        first_name_radio = patient_search.child_window(class_name="ThunderRT6OptionButton", control_id=18)
+        first_name_radio.click_input()
+        time.sleep(0.5)
+        
+        # Step 5: Enter first name
+        search_textbox = patient_search.child_window(class_name="ThunderRT6TextBox", control_id=14)
+        search_textbox.set_focus()
+        search_textbox.type_keys("^a{BACKSPACE}" + first_name)
+        time.sleep(0.5)
+        
+        # Step 5a: Navigate through fields - Tab, Tab, Down Arrow, Enter
+        helper.log_print("Navigating through search fields...")
+        patient_search.type_keys("{TAB}")
+        time.sleep(1)
+        
+        patient_search.type_keys("{TAB}")
+        time.sleep(1)
+        
+        patient_search.type_keys("{DOWN}")
+        time.sleep(1)
+
+        patient_search.type_keys("{ENTER}")
+        time.sleep(1)
+        
+        helper.log_print("=== Patient search by DOB completed ===")
+        return True
+        
+    except Exception as e:
+        error_msg = str(e).lower()
+        helper.log_print(f"Error in patient search by DOB: {e}")
+        import traceback
+        traceback.print_exc()
+        # Check if it's a timeout error
+        if "timeout" in error_msg or "timed out" in error_msg:
             raise Exception("patient_search_timeout")
         return False
 
