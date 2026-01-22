@@ -119,6 +119,7 @@ def open_patient_search_from_pane(main_window, clinic_name_sf=None):
             result = click_sidebar_icon(main_window, 2)  # Patient Explorer is icon index 2
             if not result:
                 raise Exception("Failed to click sidebar icon")
+            time.sleep(5)
             return True
         else:
             helper.log_print("Using coordinate-based method for non-IVFMD clinic")
@@ -133,7 +134,7 @@ def open_patient_search_from_pane(main_window, clinic_name_sf=None):
             
             helper.log_print(f"Clicking at relative coords ({click_x}, {click_y})")
             main_window_win32.click_input(coords=(click_x, click_y))
-            time.sleep(1)
+            time.sleep(5)
             helper.log_print("Patient Explorer clicked successfully")
             return True
         
@@ -218,10 +219,13 @@ def search_patient_by_phone_number_and_first_name_ctrl_id(phone_number, first_na
         first_name_radio.click_input()
         time.sleep(0.5)
         
-        # Step 5: Enter first name
+        # Step 5: Enter first name (use first word only for compound names)
+        import re
+        first_name_to_search = re.split(r'[\s\-()]', first_name)[0].strip()
+        helper.log_print(f"Using first name for search: {first_name_to_search}")
         search_textbox = patient_search.child_window(class_name="ThunderRT6TextBox", control_id=14)
         search_textbox.set_focus()
-        search_textbox.type_keys("^a{BACKSPACE}" + first_name)
+        search_textbox.type_keys("^a{BACKSPACE}" + first_name_to_search)
         time.sleep(0.5)
         
         # Step 5a: Navigate through fields - Tab, Tab, Down Arrow
@@ -361,10 +365,13 @@ def search_patient_by_dob_and_first_name_ctrl_id(dob, first_name, is_first=True,
         first_name_radio.click_input()
         time.sleep(0.5)
         
-        # Step 5: Enter first name
+        # Step 5: Enter first name (use first word only for compound names)
+        import re
+        first_name_to_search = re.split(r'[\s\-()]', first_name)[0].strip()
+        helper.log_print(f"Using first name for search: {first_name_to_search}")
         search_textbox = patient_search.child_window(class_name="ThunderRT6TextBox", control_id=14)
         search_textbox.set_focus()
-        search_textbox.type_keys("^a{BACKSPACE}" + first_name)
+        search_textbox.type_keys("^a{BACKSPACE}" + first_name_to_search)
         time.sleep(0.5)
         
         # Step 5a: Navigate through fields - Tab, Tab, Down Arrow, Enter

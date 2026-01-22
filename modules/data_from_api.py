@@ -57,7 +57,7 @@ def data_from_api():
         if clinic_details:
             clinic_data = clinic_details['data']
             clinics = pd.DataFrame(clinic_data, columns=['Clinic_Id', 'Username', 'Password1', 'clinic_name_sf', 'Clinic_Name', 'URL', 'Facility', 'Color', 'login_status', 'note_bot_machine', 'lamar_bot_machine', 'ins_pulling_bot_machine'])
-            clinics = clinics[clinics['note_bot_machine'] == MACHINE_NAME].reset_index(drop=True)
+            clinics = clinics[(clinics['note_bot_machine'] == MACHINE_NAME) & (clinics['login_status'] != 'failed')].reset_index(drop=True)
             
             # Decrypt Password1 column
             for index, row in clinics.iterrows():

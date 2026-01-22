@@ -17,7 +17,7 @@ class ScreenRecorder:
     Starts when initialized, stops when stop_recording() is called.
     """
     
-    def __init__(self, output_dir="recordings", fps=5, quality="medium"):
+    def __init__(self, output_dir="recordings", fps=5, quality="medium", max_file_size_gb=5):
         """
         Initialize screen recorder.
         
@@ -25,10 +25,12 @@ class ScreenRecorder:
             output_dir: Directory to save recordings (default: "recordings")
             fps: Frames per second (default: 5 for smaller files)
             quality: Video quality - "low", "medium", "high" (default: "medium")
+            max_file_size_gb: Max file size in GB before creating new file (default: 5)
         """
         self.output_dir = output_dir
         self.fps = fps
         self.quality = quality
+        self.max_file_size_bytes = max_file_size_gb * 1024 * 1024 * 1024  # Convert GB to bytes
         self.recording = False
         self.thread = None
         self.lock = threading.Lock()
@@ -36,6 +38,8 @@ class ScreenRecorder:
         self.frame_count = 0  # Track number of frames captured
         self.initial_width = None  # Store initial resolution for consistency
         self.initial_height = None
+        self.file_counter = 1  # Track file number for sequential naming
+        self.base_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")  # Base timestamp
         # Don't create mss() here - create it in the recording thread
         
         # Quality settings for video encoding
@@ -49,11 +53,21 @@ class ScreenRecorder:
         # Create output directory if it doesn't exist
         os.makedirs(self.output_dir, exist_ok=True)
         
-        # Generate filename with timestamp
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.filename = os.path.join(self.output_dir, f"Bot_Session_{timestamp}.mp4")
+        # Generate initial filename
+        self.filename = self._generate_filename()
         
         log_print(f"Screen recorder initialized - will save to: {self.filename}")
+        log_print(f"Auto-rotation enabled: New file every {max_file_size_gb}GB")
+    
+    def _generate_filename(self):
+        """Generate filename with counter for rotation."""
+        if self.file_counter == 1:
+            # First file: no counter suffix
+            filename = os.path.join(self.output_dir, f"Bot_Session_{self.base_timestamp}.mp4")
+        else:
+            # Subsequent files: add part number
+            filename = os.path.join(self.output_dir, f"Bot_Session_{self.base_timestamp}_part{self.file_counter}.mp4")
+        return filename
     
     def start_recording(self):
         """Start recording screen in background thread."""
@@ -108,6 +122,48 @@ class ScreenRecorder:
             import traceback
             log_print(f"Traceback: {traceback.format_exc()}")
             return None
+    
+    def _rotate_video_file(self):
+        """Close current video file and start a new one."""
+        try:
+            # Close current video writer
+            if self.video_writer is not None:
+                self.video_writer.release()
+                
+                # Log completion of current file
+                if os.path.exists(self.filename):
+                    file_size_gb = os.path.getsize(self.filename) / (1024 * 1024 * 1024)
+                    log_print(f"✓ Video file completed: {self.filename} ({file_size_gb:.2f} GB, {self.frame_count} frames)")
+                
+                self.video_writer = None
+            
+            # Increment counter and generate new filename
+            self.file_counter += 1
+            self.filename = self._generate_filename()
+            log_print(f"Starting new video file: {self.filename}")
+            
+            # Create new video writer
+            fourcc = self.video_settings["fourcc"]
+            self.video_writer = cv2.VideoWriter(
+                self.filename,
+                fourcc,
+                self.fps,
+                (self.initial_width, self.initial_height)
+            )
+            
+            if not self.video_writer.isOpened():
+                raise Exception(f"Failed to open video writer for {self.filename}")
+            
+            # Reset frame count for new file
+            self.frame_count = 0
+            log_print(f"✓ New video file initialized successfully")
+            return True
+            
+        except Exception as e:
+            log_print(f"ERROR: Failed to rotate video file: {e}")
+            import traceback
+            log_print(f"Traceback: {traceback.format_exc()}")
+            return False
     
     def _record_loop(self):
         """Main recording loop - captures screen frames and writes directly to disk."""
@@ -194,8 +250,28 @@ class ScreenRecorder:
                             self.video_writer.write(img)
                             self.frame_count += 1
                             
-                            # Log progress every 100 frames
-                            if self.frame_count % 100 == 0:
+                            # Check file size every 1000 frames to avoid excessive I/O
+                            if self.frame_count % 1000 == 0:
+                                try:
+                                    if os.path.exists(self.filename):
+                                        current_size = os.path.getsize(self.filename)
+                                        
+                                        # Log progress
+                                        size_gb = current_size / (1024 * 1024 * 1024)
+                                        log_print(f"Recorded {self.frame_count} frames (File size: {size_gb:.2f} GB)...")
+                                        
+                                        # Check if we need to rotate to new file
+                                        if current_size >= self.max_file_size_bytes:
+                                            log_print(f"File size limit reached ({size_gb:.2f} GB), rotating to new file...")
+                                            if not self._rotate_video_file():
+                                                log_print("ERROR: Failed to rotate file, stopping recording")
+                                                self.recording = False
+                                                break
+                                except Exception as e:
+                                    log_print(f"Warning: Could not check file size: {e}")
+                            
+                            # Log progress every 100 frames (lighter logging)
+                            elif self.frame_count % 100 == 0:
                                 log_print(f"Recorded {self.frame_count} frames...")
                     
                     consecutive_errors = 0  # Reset error counter on success

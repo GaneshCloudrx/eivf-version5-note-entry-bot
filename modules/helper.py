@@ -271,9 +271,6 @@ class LogQueueManager:
         except:
             pass
 
-
-
-
 def init_log_file(file_path=None):
     """Initialize log file with date-based naming in logs directory."""
     global log_file
@@ -425,15 +422,16 @@ def check_and_close_dotnet_error_dialog():
 
 
 # === Screen Recording Functions ===
-def start_recording(output_dir="recordings", fps=5, quality="medium"):
+def start_recording(output_dir="recordings", fps=5, quality="medium", max_file_size_gb=5):
     """
     Start screen recording for the entire bot session.
-    Simple interface - all complexity is handled internally.
+    Auto-rotates to new file when size reaches max_file_size_gb.
     
     Args:
         output_dir: Directory to save recordings (default: "recordings")
         fps: Frames per second (default: 5 for smaller files)
         quality: Video quality - "low", "medium", "high" (default: "medium")
+        max_file_size_gb: Max file size in GB before creating new file (default: 5)
     
     Returns:
         True if recording started successfully, False otherwise
@@ -447,10 +445,11 @@ def start_recording(output_dir="recordings", fps=5, quality="medium"):
         screen_recorder = screen_recorder_module.ScreenRecorder(
             output_dir=output_dir,
             fps=fps,
-            quality=quality
+            quality=quality,
+            max_file_size_gb=max_file_size_gb
         )
         screen_recorder.start_recording()
-        log_print("Screen recording started for entire session")
+        log_print(f"Screen recording started for entire session (auto-rotate at {max_file_size_gb}GB)")
         return True
     except Exception as e:
         log_print(f"WARNING: Failed to start screen recording: {str(e)}")
@@ -482,6 +481,22 @@ def stop_recording():
         return None
     finally:
         screen_recorder = None
+
+
+def cleanup_old_recordings(recordings_dir="recordings", days_old=2):
+    """Delete files older than specified days from recordings folder."""
+    import time
+    try:
+        if not os.path.exists(recordings_dir):
+            return
+        cutoff_time = time.time() - (days_old * 24 * 60 * 60)
+        for filename in os.listdir(recordings_dir):
+            filepath = os.path.join(recordings_dir, filename)
+            if os.path.isfile(filepath) and os.path.getmtime(filepath) < cutoff_time:
+                os.remove(filepath)
+                log_print(f"Deleted old file: {filename}")
+    except:
+        pass
 
 
 def take_screenshot(prefix="screenshot"):
@@ -549,13 +564,14 @@ def save_patient_to_report(note_data, status, failure_count=0):
         writer = csv.writer(f)
         if not file_exists:
             writer.writerow(['note_id', 'patient_first_name', 'patient_last_name', 
-                           'patient_phone', 'clinic_name', 'status', 'failure_count', 
+                           'patient_phone', 'patient_dob', 'clinic_name', 'status', 'failure_count', 
                            'last_attempt_time'])
         writer.writerow([
             note_data['note_id'],
             note_data['patient_first_name'],
             note_data['patient_last_name'],
             note_data['patient_phone'],
+            note_data.get('patient_dob', ''),
             note_data['clinic_name'],
             status,
             failure_count,

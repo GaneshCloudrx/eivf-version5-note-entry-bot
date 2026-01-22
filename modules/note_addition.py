@@ -522,9 +522,9 @@ def close_notes_window():
         return False
 
 
-def verify_patient_explorer_match(expected_dob, expected_last_name=None):
+def verify_patient_explorer_match(expected_dob, expected_last_name=None, expected_first_name=None):
     """
-    Verify that the patient shown in Notes window matches the expected patient DOB and optionally last name.
+    Verify that the patient shown in Notes window matches the expected patient DOB, first name, and last name.
 
     This is a MANDATORY verification step before writing notes.
     Checks if the expected DOB string is contained in the patient info text.
@@ -595,21 +595,45 @@ def verify_patient_explorer_match(expected_dob, expected_last_name=None):
         
         helper.log_print(f"✓ DOB '{formatted_dob}' found in patient info")
         
-        # Step 5: Check last name if provided (for DOB-based searches)
-        if expected_last_name:
-            last_name_found = expected_last_name.lower() in patient_info.lower()
+        # Step 5: Check first name if provided (for DOB-based searches)
+        if expected_first_name:
+            import re
+            # Take first word from first name (handles compound names like "Maria Elena")
+            first_name_to_check = re.split(r'[\s\-()]', expected_first_name)[0].strip().lower()
+            first_name_found = first_name_to_check in patient_info.lower()
             
-            if not last_name_found:
-                helper.log_print(f"verify_patient_explorer_match: FAILED - Last Name '{expected_last_name}' NOT found in patient info")
+            if not first_name_found:
+                helper.log_print(f"verify_patient_explorer_match: FAILED - First Name '{first_name_to_check}' NOT found in patient info")
                 # Close Notes window when verification fails
                 helper.log_print("Closing Notes window due to verification failure...")
                 close_notes_window()
                 return False
             
-            helper.log_print(f"✓ Last Name '{expected_last_name}' found in patient info")
-            helper.log_print(f"verify_patient_explorer_match: PASSED - Both DOB and Last Name verified")
-        else:
-            helper.log_print(f"verify_patient_explorer_match: PASSED - DOB verified")
+            helper.log_print(f"✓ First Name '{first_name_to_check}' found in patient info")
+        
+        # Step 6: Check last name if provided (for DOB-based searches)
+        if expected_last_name:
+            import re
+            # Take last word from last name (handles "Sanchez Torres", "Ampie-mendoza", "Brumagin (Hodge)")
+            last_name_to_check = re.split(r'[\s\-()]', expected_last_name)[-1].strip().lower()
+            last_name_found = last_name_to_check in patient_info.lower()
+            
+            if not last_name_found:
+                helper.log_print(f"verify_patient_explorer_match: FAILED - Last Name '{last_name_to_check}' NOT found in patient info")
+                # Close Notes window when verification fails
+                helper.log_print("Closing Notes window due to verification failure...")
+                close_notes_window()
+                return False
+            
+            helper.log_print(f"✓ Last Name '{last_name_to_check}' found in patient info")
+        
+        # Final verification message
+        verified_items = ["DOB"]
+        if expected_first_name:
+            verified_items.append("First Name")
+        if expected_last_name:
+            verified_items.append("Last Name")
+        helper.log_print(f"verify_patient_explorer_match: PASSED - {' and '.join(verified_items)} verified")
         
         return True
 

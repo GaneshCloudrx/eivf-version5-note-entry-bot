@@ -8,14 +8,13 @@ import config
 
 import modules.helper as helper
 
-
-# API Configuration
-API_BASE_URL = "https://portal.reuniterx.com/api/v1/webservice/endpoint/"
-CLINIC_LIST_ENDPOINT = "rpa_get_eivf_bot_clinic_list.php"
-PORTAL_API_ENDPOINT = "api.php"  # Main API endpoint for login and data operations
-
-# Authorization header for clinic list API
-CLINIC_API_AUTH = "Basic Y2xvdWQ6Q2xvdWRAMjAyMzQ="
+# Import API configuration from config file
+from config import (
+    API_BASE_URL,
+    CLINIC_LIST_ENDPOINT,
+    PORTAL_API_ENDPOINT,
+    API_AUTH_HEADER as CLINIC_API_AUTH
+)
 
 
 def get_clinic_details():

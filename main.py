@@ -30,6 +30,10 @@ class RestartEivfException(Exception):
     pass
 
 
+# Global variable to track last configured URL
+last_configured_url = None
+
+
 def process_single_note(note_data, clinic_data, is_first, search_method='phone'):
     """
     Process a single patient note entry
@@ -108,9 +112,9 @@ def process_single_note(note_data, clinic_data, is_first, search_method='phone')
     # Step 5: Verify patient in Notes window by DOB (and last name for DOB searches)
     time.sleep(1)
     if search_method == 'dob':
-        # For DOB searches, verify both DOB and last name for enhanced accuracy
-        if not notes.verify_patient_explorer_match(dob, last_name):
-            helper.log_print("ERROR: Patient verification FAILED - DOB or Last Name mismatch")
+        # For DOB searches, verify DOB, first name, and last name for enhanced accuracy
+        if not notes.verify_patient_explorer_match(dob, last_name, first_name):
+            helper.log_print("ERROR: Patient verification FAILED - DOB, First Name, or Last Name mismatch")
             raise Exception("patient_verification_failed")
         helper.log_print("Patient verified by DOB and Last Name!")
     else:
@@ -144,6 +148,8 @@ def process_single_note(note_data, clinic_data, is_first, search_method='phone')
 
 def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
     """Process all notes for a single clinic"""
+    global last_configured_url
+    
     helper.log_print(f"\n{'#'*60}")
     helper.log_print(f"CLINIC: {clinic['Clinic_Name']} ({len(clinic_notes)} notes)")
     helper.log_print(f"{'#'*60}")
@@ -156,40 +162,30 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
         helper.log_print(f"URL unchanged ({current_url}) - skipping configuration change")
         skip_config = True
     
-    if skip_config:
-        # Just login without config change (eIVF already open from previous clinic)
-        app = Application(backend="uia").connect(title="eIVF")
-        window = app.window(title="eIVF")
-        
-        if not login.login(window, clinic['Username'], clinic['Password1'], 
-                           clinic['clinic_name_sf'], clinic['URL'], clinic['login_status']):
-            helper.log_print("Login failed")
-            login.close_application(window)
-            return 0, 0
-        helper.log_print("Login successful!")
-    else:
-        # Full process: Open, configure, restart, and login
-        app, window = login.open_application(APP_PATH, TARGET_TITLE)
-        if not app or not window:
-            helper.log_print("Failed to open application")
-            raise Exception("Login Issue")
-        
-        # Change configuration
+    # Open application
+    app, window = login.open_application(APP_PATH, TARGET_TITLE)
+    if not app or not window:
+        helper.log_print("Failed to open application")
+        raise Exception("Login Issue")
+    
+    # Apply configuration only if URL changed
+    if not skip_config:
         if not config_change.change_configuration(window, clinic['URL'], clinic['Facility']):
             helper.log_print("Configuration failed")
             login.close_application(window)
             return 0, 0
-        
-        # Restart and login
         login.kill_application("eIVF.exe")
         app, window = login.open_application(APP_PATH, TARGET_TITLE)
-        
-        if not login.login(window, clinic['Username'], clinic['Password1'], 
-                           clinic['clinic_name_sf'], clinic['URL'], clinic['login_status']):
-            helper.log_print("Login failed")
-            login.close_application(window)
-            return 0, 0
-        helper.log_print("Login successful!")
+    
+    # Login
+    if not login.login(window, clinic['Username'], clinic['Password1'], 
+                       clinic['clinic_name_sf'], clinic['URL'], clinic['login_status']):
+        helper.log_print("Login failed")
+        login.close_application(window)
+        return 0, 0
+    
+    helper.log_print("Login successful!")
+    last_configured_url = current_url
     
     # Process each note
     success_count = 0
@@ -346,6 +342,9 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
             login.kill_application("eIVF.exe")
             time.sleep(2)
             
+            # Check if configuration is needed
+            needs_config = (last_configured_url != current_url)
+            
             # Restart application
             helper.log_print("Restarting eIVF...")
             app, window = login.open_application(APP_PATH, TARGET_TITLE)
@@ -353,6 +352,19 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
                 helper.log_print("Failed to restart eIVF - skipping remaining notes")
                 helper.take_screenshot(prefix="restart_failed")
                 return success_count, fail_count
+            
+            # Apply configuration if needed (URL changed or first time)
+            if needs_config:
+                helper.log_print(f"Applying configuration for URL: {current_url}")
+                if not config_change.change_configuration(window, clinic['URL'], clinic['Facility']):
+                    helper.log_print("Configuration failed after restart")
+                    return success_count, fail_count
+                login.kill_application("eIVF.exe")
+                time.sleep(2)
+                app, window = login.open_application(APP_PATH, TARGET_TITLE)
+                last_configured_url = current_url  # Update after configuration
+            else:
+                helper.log_print(f"Skipping configuration (URL unchanged: {current_url})")
             
             # Re-login
             if not login.login(window, clinic['Username'], clinic['Password1'], 
@@ -374,7 +386,7 @@ def main():
     # Initialize
     helper.init_log_file(None)
     helper.init_log_queue_manager()
-    #helper.init_heartbeat()
+    helper.init_heartbeat()
     helper.log_print("=== eIVF Note Bot Started ===")
     
     # Set screen resolution FIRST
@@ -384,8 +396,8 @@ def main():
         # Wait for resolution to fully apply before starting recording
         time.sleep(2)
     
-    # Start recording AFTER resolution is set
-    helper.start_recording(output_dir="recordings", fps=5, quality="medium")
+    # Start recording AFTER resolution is set (auto-rotate at 5GB)
+    helper.start_recording(output_dir="recordings", fps=5, quality="medium", max_file_size_gb=5)
     
     try:
         running = True
@@ -393,6 +405,7 @@ def main():
             try:
                 # Fetch data from API
                 helper.check_and_wait_if_paused()
+                helper.cleanup_old_recordings(recordings_dir="recordings", days_old=2)
                 clinics, all_notes = data_from_api()
                 if clinics is None or all_notes is None:
                     raise Exception("No Data Found")
