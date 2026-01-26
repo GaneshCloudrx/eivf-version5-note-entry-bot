@@ -422,13 +422,13 @@ def check_and_close_dotnet_error_dialog():
 
 
 # === Screen Recording Functions ===
-def start_recording(output_dir="recordings", fps=5, quality="medium", max_file_size_gb=5):
+def start_recording(output_dir=None, fps=5, quality="medium", max_file_size_gb=5):
     """
     Start screen recording for the entire bot session.
     Auto-rotates to new file when size reaches max_file_size_gb.
     
     Args:
-        output_dir: Directory to save recordings (default: "recordings")
+        output_dir: Directory to save recordings (default: from config.RECORDINGS_DIR)
         fps: Frames per second (default: 5 for smaller files)
         quality: Video quality - "low", "medium", "high" (default: "medium")
         max_file_size_gb: Max file size in GB before creating new file (default: 5)
@@ -437,6 +437,10 @@ def start_recording(output_dir="recordings", fps=5, quality="medium", max_file_s
         True if recording started successfully, False otherwise
     """
     global screen_recorder
+    
+    from config import RECORDINGS_DIR
+    if output_dir is None:
+        output_dir = RECORDINGS_DIR
     
     try:
         # Import here to avoid circular dependencies
@@ -483,9 +487,14 @@ def stop_recording():
         screen_recorder = None
 
 
-def cleanup_old_recordings(recordings_dir="recordings", days_old=2):
+def cleanup_old_recordings(recordings_dir=None, days_old=2):
     """Delete files older than specified days from recordings folder."""
     import time
+    from config import RECORDINGS_DIR
+    
+    if recordings_dir is None:
+        recordings_dir = RECORDINGS_DIR
+    
     try:
         if not os.path.exists(recordings_dir):
             return
@@ -495,8 +504,8 @@ def cleanup_old_recordings(recordings_dir="recordings", days_old=2):
             if os.path.isfile(filepath) and os.path.getmtime(filepath) < cutoff_time:
                 os.remove(filepath)
                 log_print(f"Deleted old file: {filename}")
-    except:
-        pass
+    except Exception as e:
+        log_print(f"Cleanup error: {e}")
 
 
 def take_screenshot(prefix="screenshot"):
@@ -511,9 +520,10 @@ def take_screenshot(prefix="screenshot"):
     """
     try:
         from PIL import ImageGrab
+        from config import RECORDINGS_DIR
         
         # Create recordings directory if it doesn't exist
-        output_dir = "recordings"
+        output_dir = RECORDINGS_DIR
         os.makedirs(output_dir, exist_ok=True)
         
         # Generate filename with timestamp

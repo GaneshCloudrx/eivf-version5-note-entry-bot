@@ -23,6 +23,7 @@ def set_color(color, window_title="eivf", window_class="ThunderRT6MDIForm"):
     
     # Dynamic wait for eIVF window (up to 10 seconds)
     timeout = 10
+    time.sleep(5)
     start_time = time.time()
     
     while (time.time() - start_time) < timeout:
@@ -38,7 +39,7 @@ def set_color(color, window_title="eivf", window_class="ThunderRT6MDIForm"):
                     if any(sys_win in win_title.lower() for sys_win in system_windows):
                         continue
                     
-                    if win_title.lower() == window_title and win_class == window_class:
+                    if win_title.lower() == window_title.lower() and win_class.lower() == window_class.lower():
                         process_id = win.element_info.process_id
                         app = Application(backend="uia").connect(process=process_id)
                         main_window = app.window(title=win_title, class_name=win_class)

@@ -104,22 +104,52 @@ def click_patient_search_button():
         return False
 
 
+def click_patient_explorer_keyboard():
+    """
+    Click Patient Explorer using Home button + keyboard navigation.
+    Universal method that works for all clinic types.
+    """
+    try:
+        helper.log_print("Opening Patient Explorer using keyboard navigation...")
+        app = Application(backend="uia").connect(title="eIVF", class_name="ThunderRT6MDIForm")
+        main_window = app.window(title="eIVF", class_name="ThunderRT6MDIForm")
+        
+        # Set focus and maximize
+        main_window.set_focus()
+        time.sleep(5)
+        
+        # Click Home button (leftmost on toolbar)
+        main_window.click_input(coords=(22, 92))
+        time.sleep(1)
+        
+        # Press Right arrow to navigate to Patient Explorer
+        main_window.type_keys("{RIGHT}")
+        time.sleep(0.5)
+        
+        helper.log_print("Patient Explorer opened successfully")
+        return True
+        
+    except Exception as e:
+        helper.log_print(f"Error opening Patient Explorer: {e}")
+        return False
+
+
 def open_patient_search_from_pane(main_window, clinic_name_sf=None):
     """
     Click on Patient Explorer based on clinic type.
-    For IVFMD: Use sidebar icon method
-    For others: Use relative coordinates method
+    For IVFMD: Use keyboard navigation method (Home + Right arrow)
+    For others: Use coordinate-based method
     """
     helper.log_print(f"Opening Patient Explorer for clinic: {clinic_name_sf}...")
     
     try:
         # Check if clinic is IVFMD
-        if clinic_name_sf and clinic_name_sf == "IVFMD":
-            helper.log_print("Using sidebar icon method for IVFMD clinic")
-            result = click_sidebar_icon(main_window, 2)  # Patient Explorer is icon index 2
+        if clinic_name_sf and (clinic_name_sf.upper() == "IVFMD" or clinic_name_sf.upper() == "IRMS"):
+            helper.log_print("Using keyboard navigation method for IVFMD clinic")
+            result = click_patient_explorer_keyboard()
             if not result:
-                raise Exception("Failed to click sidebar icon")
-            time.sleep(5)
+                raise Exception("Failed to open Patient Explorer")
+            time.sleep(3)
             return True
         else:
             helper.log_print("Using coordinate-based method for non-IVFMD clinic")

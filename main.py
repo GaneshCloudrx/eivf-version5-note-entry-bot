@@ -7,7 +7,7 @@ import traceback
 from pywinauto import Application
 
 # Config
-from config import APP_PATH, TARGET_TITLE
+from config import APP_PATH, TARGET_TITLE, RECORDINGS_DIR
 
 # Modules with alias imports
 import modules.helper as helper
@@ -157,8 +157,8 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
     current_url = clinic['URL']
     skip_config = False
     
-    # Check if URL is same as previous clinic
-    if previous_url and previous_url == current_url:
+    # Check if URL is same as last configured (from restart) or previous clinic (same session)
+    if (last_configured_url and last_configured_url == current_url) or (previous_url and previous_url == current_url):
         helper.log_print(f"URL unchanged ({current_url}) - skipping configuration change")
         skip_config = True
     
@@ -403,9 +403,9 @@ def main():
         running = True
         while running:
             try:
+                helper.cleanup_old_recordings(recordings_dir=RECORDINGS_DIR, days_old=2)
                 # Fetch data from API
                 helper.check_and_wait_if_paused()
-                helper.cleanup_old_recordings(recordings_dir="recordings", days_old=2)
                 clinics, all_notes = data_from_api()
                 if clinics is None or all_notes is None:
                     raise Exception("No Data Found")
@@ -428,7 +428,7 @@ def main():
                 # Process each clinic
                 total_success = 0
                 total_fail = 0
-                previous_url = None
+                previous_url = last_configured_url  # Use last configured URL instead of None
                 
                 for _, clinic in clinics.iterrows():
                     clinic_notes = notes_to_process[
