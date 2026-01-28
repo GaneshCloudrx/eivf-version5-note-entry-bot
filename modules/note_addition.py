@@ -316,7 +316,7 @@ def click_new_button():
             if new_btn.exists(timeout=2):
                 new_btn.invoke()
                 helper.log_print("New button clicked (direct)")
-                time.sleep(5)
+                time.sleep(1)  # Brief wait, dynamic wait happens in verification
                 return True
         except Exception:
             pass
@@ -551,21 +551,35 @@ def verify_patient_explorer_match(expected_dob, expected_last_name=None, expecte
             helper.log_print(f"Formatted DOB from '{expected_dob}' to '{formatted_dob}'")
         
         # Step 2: Find Notes window and extract raw patient info text
+        # Dynamic wait - check every 1 second for up to 30 seconds
         desktop = Desktop(backend="win32")
         
         notes_pid = None
-        for win in desktop.windows():
-            try:
-                title = win.window_text()
-                if "Notes" in title and "Quick Summary" in title:
-                    notes_pid = win.process_id()
-                    helper.log_print(f"Found Notes window: {title}, PID: {notes_pid}")
-                    break
-            except:
-                pass
+        max_wait_time = 30  # Maximum wait time in seconds
+        check_interval = 1  # Check every 1 second
+        elapsed_time = 0
+        
+        helper.log_print(f"Waiting for Notes window (max {max_wait_time}s)...")
+        
+        while elapsed_time < max_wait_time:
+            for win in desktop.windows():
+                try:
+                    title = win.window_text()
+                    if "Notes" in title and "Quick Summary" in title:
+                        notes_pid = win.process_id()
+                        helper.log_print(f"Found Notes window after {elapsed_time}s: {title}, PID: {notes_pid}")
+                        break
+                except:
+                    pass
+            
+            if notes_pid:
+                break  # Window found, exit wait loop
+            
+            time.sleep(check_interval)
+            elapsed_time += check_interval
         
         if not notes_pid:
-            helper.log_print("verify_patient_explorer_match: Notes window not found")
+            helper.log_print(f"verify_patient_explorer_match: Notes window not found after {max_wait_time}s")
             helper.log_print("VERIFICATION FAILED - cannot proceed without verifying patient")
             return False
         
