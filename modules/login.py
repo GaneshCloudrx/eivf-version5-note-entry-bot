@@ -8,7 +8,7 @@ from config import SCRC_SECRET_KEY
 
 import modules.helper as helper
 
-def open_application(app_path, target_title, max_wait_time=30):
+def open_application(app_path, target_title, max_wait_time=60):
     """
     Open the eIVF application if not already open. Ensures only one instance is running.
     Returns: (app, window) tuple or (None, None) if failed

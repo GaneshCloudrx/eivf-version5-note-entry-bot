@@ -21,7 +21,7 @@ import modules.data_reader as data_reader
 # API
 from modules.data_from_api import data_from_api, update_api
 from modules.api_integration import log_error_to_portal
-from config import MAX_PATIENT_FAILURES
+from config import MAX_PATIENT_FAILURES, APP_OPERATION_TIMEOUT, NOTE_PROCESSING_TIMEOUT
 
 
 # Custom exception for triggering application restart
@@ -163,23 +163,51 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
         skip_config = True
     
     # Open application
-    app, window = login.open_application(APP_PATH, TARGET_TITLE)
+    try:
+        app, window = helper.run_with_timeout(
+            lambda: login.open_application(APP_PATH, TARGET_TITLE), timeout_seconds=APP_OPERATION_TIMEOUT)
+    except TimeoutError:
+        helper.log_print("Failed to open application (timeout)")
+        login.kill_application("eIVF.exe")
+        raise Exception("Login Issue")
     if not app or not window:
         helper.log_print("Failed to open application")
         raise Exception("Login Issue")
     
     # Apply configuration only if URL changed
     if not skip_config:
-        if not config_change.change_configuration(window, clinic['URL'], clinic['Facility']):
+        try:
+            config_ok = helper.run_with_timeout(
+                lambda: config_change.change_configuration(window, clinic['URL'], clinic['Facility']),
+                timeout_seconds=APP_OPERATION_TIMEOUT)
+        except TimeoutError:
+            helper.log_print("Configuration timed out")
+            login.kill_application("eIVF.exe")
+            return 0, 0
+        if not config_ok:
             helper.log_print("Configuration failed")
             login.close_application(window)
             return 0, 0
         login.kill_application("eIVF.exe")
-        app, window = login.open_application(APP_PATH, TARGET_TITLE)
+        try:
+            app, window = helper.run_with_timeout(
+                lambda: login.open_application(APP_PATH, TARGET_TITLE), timeout_seconds=APP_OPERATION_TIMEOUT)
+        except TimeoutError:
+            helper.log_print("Failed to reopen application after config (timeout)")
+            login.kill_application("eIVF.exe")
+            return 0, 0
     
     # Login
-    if not login.login(window, clinic['Username'], clinic['Password1'], 
-                       clinic['clinic_name_sf'], clinic['URL'], clinic['login_status']):
+    try:
+        login_ok = helper.run_with_timeout(
+            lambda: login.login(window, clinic['Username'], clinic['Password1'],
+                                clinic['clinic_name_sf'], clinic['URL'], clinic['login_status']),
+            timeout_seconds=APP_OPERATION_TIMEOUT)
+    except TimeoutError:
+        helper.log_print("Login timed out")
+        login.kill_application("eIVF.exe")
+        return 0, 0
+    if not login_ok:
         helper.log_print("Login failed")
         login.close_application(window)
         return 0, 0
@@ -217,7 +245,15 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
                 
                 helper.log_print(f"Attempt {current_attempt}/{MAX_PATIENT_FAILURES} using {search_method.upper()} search")
                 
-                if process_single_note(note_data, clinic_data, is_first, search_method):
+                try:
+                    note_result = helper.run_with_timeout(
+                        lambda: process_single_note(note_data, clinic_data, is_first, search_method),
+                        timeout_seconds=NOTE_PROCESSING_TIMEOUT)
+                except TimeoutError:
+                    helper.log_print("Note processing timed out after 5 minutes - restarting eIVF")
+                    helper.take_screenshot(prefix="note_processing_timeout")
+                    raise RestartEivfException("Note processing timed out")
+                if note_result:
                     success_count += 1
                     helper.save_patient_to_report(note_data, 'success', 0)
                     
@@ -347,7 +383,13 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
             
             # Restart application
             helper.log_print("Restarting eIVF...")
-            app, window = login.open_application(APP_PATH, TARGET_TITLE)
+            try:
+                app, window = helper.run_with_timeout(
+                    lambda: login.open_application(APP_PATH, TARGET_TITLE), timeout_seconds=APP_OPERATION_TIMEOUT)
+            except TimeoutError:
+                helper.log_print("Failed to restart eIVF (timeout)")
+                login.kill_application("eIVF.exe")
+                return success_count, fail_count
             if not app or not window:
                 helper.log_print("Failed to restart eIVF - skipping remaining notes")
                 helper.take_screenshot(prefix="restart_failed")
@@ -356,19 +398,41 @@ def process_clinic(clinic, clinic_notes, patient_report, previous_url=None):
             # Apply configuration if needed (URL changed or first time)
             if needs_config:
                 helper.log_print(f"Applying configuration for URL: {current_url}")
-                if not config_change.change_configuration(window, clinic['URL'], clinic['Facility']):
+                try:
+                    config_ok = helper.run_with_timeout(
+                        lambda: config_change.change_configuration(window, clinic['URL'], clinic['Facility']),
+                        timeout_seconds=APP_OPERATION_TIMEOUT)
+                except TimeoutError:
+                    helper.log_print("Configuration timed out after restart")
+                    login.kill_application("eIVF.exe")
+                    return success_count, fail_count
+                if not config_ok:
                     helper.log_print("Configuration failed after restart")
                     return success_count, fail_count
                 login.kill_application("eIVF.exe")
                 time.sleep(2)
-                app, window = login.open_application(APP_PATH, TARGET_TITLE)
+                try:
+                    app, window = helper.run_with_timeout(
+                        lambda: login.open_application(APP_PATH, TARGET_TITLE), timeout_seconds=APP_OPERATION_TIMEOUT)
+                except TimeoutError:
+                    helper.log_print("Failed to reopen after config (timeout)")
+                    login.kill_application("eIVF.exe")
+                    return success_count, fail_count
                 last_configured_url = current_url  # Update after configuration
             else:
                 helper.log_print(f"Skipping configuration (URL unchanged: {current_url})")
             
             # Re-login
-            if not login.login(window, clinic['Username'], clinic['Password1'], 
-                               clinic['clinic_name_sf'], clinic['URL'], clinic['login_status']):
+            try:
+                login_ok = helper.run_with_timeout(
+                    lambda: login.login(window, clinic['Username'], clinic['Password1'],
+                                        clinic['clinic_name_sf'], clinic['URL'], clinic['login_status']),
+                    timeout_seconds=APP_OPERATION_TIMEOUT)
+            except TimeoutError:
+                helper.log_print("Re-login timed out")
+                login.kill_application("eIVF.exe")
+                return success_count, fail_count
+            if not login_ok:
                 helper.log_print("Re-login failed - skipping remaining notes")
                 helper.take_screenshot(prefix="relogin_failed")
                 return success_count, fail_count
@@ -397,13 +461,13 @@ def main():
         time.sleep(2)
     
     # Start recording AFTER resolution is set (auto-rotate at 5GB)
-    helper.start_recording(output_dir="recordings", fps=5, quality="medium", max_file_size_gb=5)
+    helper.start_recording(output_dir="recordings", fps=5, quality="medium", max_file_size_gb=2)
     
     try:
         running = True
         while running:
             try:
-                helper.cleanup_old_recordings(recordings_dir=RECORDINGS_DIR, days_old=2)
+                helper.cleanup_old_recordings(recordings_dir=RECORDINGS_DIR, days_old=1)
                 # Fetch data from API
                 helper.check_and_wait_if_paused()
                 clinics, all_notes = data_from_api()
@@ -429,11 +493,17 @@ def main():
                 total_success = 0
                 total_fail = 0
                 previous_url = last_configured_url  # Use last configured URL instead of None
-                
+
+                # Sort clinics by their oldest pending note so oldest work is done first
+                clinic_min_created = notes_to_process.groupby('clinic_name')['created'].min()
+                clinics = clinics.copy()
+                clinics['_min_created'] = clinics['Clinic_Name'].map(clinic_min_created)
+                clinics = clinics.sort_values('_min_created').reset_index(drop=True)
+
                 for _, clinic in clinics.iterrows():
                     clinic_notes = notes_to_process[
                         notes_to_process['clinic_name'] == clinic['Clinic_Name']
-                    ].reset_index(drop=True)
+                    ].sort_values('created', ascending=True).reset_index(drop=True)
                     
                     if len(clinic_notes) == 0:
                         continue

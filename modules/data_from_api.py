@@ -74,6 +74,8 @@ def data_from_api():
                     if status:
                         notes = pd.DataFrame(note_details['data'], columns=['note_id', 'patient_id', 'note', 'author', 'created', 'patient_first_name', 'patient_last_name', 'patient_dob', 'patient_phone', 'clinic_name', 'emr_system', 'prescriber_first_name', 'prescriber_last_name', 'created_formatted', 'prescriber_name'])
                         notes = notes[notes['clinic_name'].isin(clinics['Clinic_Name'])].reset_index(drop=True)
+                        # Process oldest notes first
+                        notes = notes.sort_values('created', ascending=True).reset_index(drop=True)
                         return clinics, notes
                     else:
                         return clinics, None
@@ -88,9 +90,32 @@ def data_from_api():
         return None, None
 
 def update_api(note_id):
-    status, token = api.get_login_token(PORTAL_API_URL, ADMIN_EMAIL, ADMIN_PASSWORD)
-    if status:
-        api.update_note_status(token, note_id) 
+    """Update note status in API with retry on 401"""
+    import time
+    max_retries = 2
+    
+    for attempt in range(max_retries):
+        status, token = api.get_login_token(PORTAL_API_URL, ADMIN_EMAIL, ADMIN_PASSWORD)
+        if not status:
+            helper.log_print(f"Failed to get login token (attempt {attempt + 1}/{max_retries})")
+            continue
+        
+        success, result = api.update_note_status(token, note_id)
+        if success:
+            helper.log_print(f"✓ Note {note_id} updated successfully")
+            return True
+        
+        # Check if it's a 401 that needs retry
+        if result.get("needs_token_refresh") and attempt < max_retries - 1:
+            helper.log_print(f"Token expired, retrying... (attempt {attempt + 1}/{max_retries})")
+            time.sleep(1)
+            continue
+        
+        # Other error, don't retry
+        break
+    
+    helper.log_print(f"Failed to update note {note_id} after {max_retries} attempts")
+    return False 
 
 
 if __name__ == "__main__":

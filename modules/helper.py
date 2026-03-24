@@ -12,7 +12,7 @@ import threading
 import requests
 from pywinauto import Desktop, mouse
 from pywinauto.keyboard import send_keys
-from config import API_BASE_URL, API_AUTH_HEADER, MACHINE_NAME, BOT_NAME, SCRC_SECRET_KEY, API_LOG_ENABLED, API_LOG_BATCH_SIZE, API_LOG_ENDPOINT, API_TIMEOUT, API_LOG_BATCH_INTERVAL
+from config import API_BASE_URL, API_AUTH_HEADER, MACHINE_NAME, BOT_NAME, SCRC_SECRET_KEY, API_LOG_ENABLED, API_LOG_BATCH_SIZE, API_LOG_ENDPOINT, API_TIMEOUT, API_LOG_BATCH_INTERVAL, UI_ACTION_TIMEOUT
 import pyotp
 
 # === Constants ===
@@ -368,6 +368,26 @@ def stop_heartbeat():
     if heartbeat_manager:
         heartbeat_manager.stop()
         heartbeat_manager = None
+
+
+def run_with_timeout(func, timeout_seconds=60):
+    """Run func in a daemon thread; raise TimeoutError if it doesn't finish in time."""
+    result, error = [None], [None]
+    def _target():
+        try:
+            result[0] = func()
+        except Exception as e:
+            error[0] = e
+    t = threading.Thread(target=_target, daemon=True)
+    t.start()
+    t.join(timeout=timeout_seconds)
+    if t.is_alive():
+        raise TimeoutError(f"Operation timed out after {timeout_seconds}s")
+    if error[0]:
+        raise error[0]
+    return result[0]
+
+
 # === .NET Error Dialog Handler ===
 
 def check_and_close_dotnet_error_dialog():
@@ -395,7 +415,7 @@ def check_and_close_dotnet_error_dialog():
                 # Method 1: Click at Continue button coordinates
                 try:
                     log_print("Clicking Continue button at (1016, 582)...")
-                    mouse.click(coords=(1016, 582))
+                    run_with_timeout(lambda: mouse.click(coords=(1016, 582)), timeout_seconds=UI_ACTION_TIMEOUT)
                     log_print("*** Clicked Continue button! ***")
                     time.sleep(1)
                     return True
@@ -405,9 +425,7 @@ def check_and_close_dotnet_error_dialog():
                 # Method 2: Alt+C keyboard shortcut as fallback
                 try:
                     log_print("Trying Alt+C keyboard shortcut...")
-                    win.set_focus()
-                    time.sleep(0.3)
-                    send_keys("%c")  # Alt+C
+                    run_with_timeout(lambda: (win.set_focus(), time.sleep(0.3), send_keys("%c")), timeout_seconds=UI_ACTION_TIMEOUT)
                     log_print("*** Sent Alt+C ***")
                     time.sleep(1)
                     return True
@@ -422,7 +440,7 @@ def check_and_close_dotnet_error_dialog():
 
 
 # === Screen Recording Functions ===
-def start_recording(output_dir=None, fps=5, quality="medium", max_file_size_gb=5):
+def start_recording(output_dir=None, fps=5, quality="medium", max_file_size_gb=2):
     """
     Start screen recording for the entire bot session.
     Auto-rotates to new file when size reaches max_file_size_gb.

@@ -9,6 +9,7 @@ from pywinauto.keyboard import send_keys
 
 import modules.helper as helper
 import modules.patient_search as patient_search
+from config import UI_ACTION_TIMEOUT
 
 
 # Reusable Desktop instance for UIA backend
@@ -77,14 +78,14 @@ def write_note(note_title, note_text):
 
         if note_area:
             helper.log_print(f"Clicking note area at {note_area}")
-            mouse.click(coords=note_area)
+            helper.run_with_timeout(lambda a=note_area: mouse.click(coords=a), timeout_seconds=UI_ACTION_TIMEOUT)
             time.sleep(0.5)
 
         # Paste the note content using clipboard (preserves newlines)
         try:
             pyperclip.copy(note_text)
             helper.log_print("Note content copied to clipboard")
-            send_keys("^v")  # Ctrl+V to paste
+            helper.run_with_timeout(lambda: send_keys("^v"), timeout_seconds=UI_ACTION_TIMEOUT)  # Ctrl+V to paste
             time.sleep(0.3)
             helper.log_print(f"Note content pasted: '{note_text}'")
             note_entered = True
@@ -488,12 +489,15 @@ def close_notes_window():
                                 helper.log_print(
                                     f"Found Windows Forms Close button: class='{cls}' rect=({rect.left},{rect.top},{rect.right},{rect.bottom})")
                                 
-                                # Click using mouse
+                                # Click using mouse (with timeout to prevent hang)
                                 center_x = (rect.left + rect.right) // 2
                                 center_y = (rect.top + rect.bottom) // 2
                                 helper.log_print(f"Clicking Close button at ({center_x}, {center_y})")
                                 
-                                mouse.click(coords=(center_x, center_y))
+                                helper.run_with_timeout(
+                                    lambda cx=center_x, cy=center_y: mouse.click(coords=(cx, cy)),
+                                    timeout_seconds=UI_ACTION_TIMEOUT
+                                )
                                 helper.log_print("Close button clicked successfully!")
                                 time.sleep(1)
                                 return True
@@ -503,11 +507,12 @@ def close_notes_window():
                 continue
         
         helper.log_print("Close button not found - trying Escape key as fallback...")
-        # Fallback: Try Escape key
+        # Fallback: Try Escape key (with timeout to prevent hang)
         try:
-            main_window.set_focus()
-            time.sleep(0.3)
-            send_keys("{ESC}", with_spaces=True)
+            helper.run_with_timeout(
+                lambda: (main_window.set_focus(), time.sleep(0.3), send_keys("{ESC}", with_spaces=True)),
+                timeout_seconds=UI_ACTION_TIMEOUT
+            )
             time.sleep(0.5)
             helper.log_print("Notes window closed using Escape (fallback)")
             return True

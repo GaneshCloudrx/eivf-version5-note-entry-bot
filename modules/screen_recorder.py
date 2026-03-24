@@ -17,7 +17,7 @@ class ScreenRecorder:
     Starts when initialized, stops when stop_recording() is called.
     """
     
-    def __init__(self, output_dir="recordings", fps=5, quality="medium", max_file_size_gb=5):
+    def __init__(self, output_dir="recordings", fps=5, quality="medium", max_file_size_gb=2):
         """
         Initialize screen recorder.
         
