@@ -32,8 +32,8 @@ if (Test-Path $updateScriptPath) {
     }
 }
 
-Write-Host "Waiting 60 seconds before starting the bot..."
-Start-Sleep -Seconds 60
+Write-Host "Waiting 5 seconds before starting the bot..."
+Start-Sleep -Seconds 5
 
 if (-not (Test-Path $mainPath)) {
     throw "Bot entrypoint not found: $mainPath"
