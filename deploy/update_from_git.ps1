@@ -115,16 +115,16 @@ try {
         Invoke-External -FilePath "robocopy.exe" `
             -Arguments @($BotRoot, $backupPath, "/MIR","/R:2","/W:2","/NP",
                          "/XD","logs","reports","recordings","__pycache__","runtime","backup","deploy",
-                         "/XF","*.pyc","*.log") `
+                         "/XF","*.pyc","*.log","config.py",".env") `
             -FailureMessage "Backup failed." -AllowRobocopyExitCodes
     }
 
-    # Sync repo root -> BotRoot (preserving local data folders)
+    # Sync repo root -> BotRoot (preserving local data folders and local-only config)
     Write-Log "Syncing latest code into $BotRoot..."
     Invoke-External -FilePath "robocopy.exe" `
         -Arguments @($repoCachePath, $BotRoot, "/MIR","/R:2","/W:2","/NP",
                      "/XD","logs","reports","recordings","__pycache__","runtime","backup","repo-cache",".git",
-                     "/XF","*.pyc","*.log",".env") `
+                     "/XF","*.pyc","*.log","config.py",".env") `
         -FailureMessage "Code sync failed." -AllowRobocopyExitCodes
 
     # Install dependencies
