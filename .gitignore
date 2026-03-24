@@ -3,9 +3,6 @@ log_*.txt
 log.txt
 *.log
 
-# Configuration files (may contain sensitive data)
-config.py
-
 # Reports and recordings
 reports/
 recordings/
