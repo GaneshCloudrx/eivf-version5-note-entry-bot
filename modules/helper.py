@@ -573,6 +573,7 @@ def get_daily_report_file():
 def load_patient_report():
     """Load existing patient report from today's CSV."""
     report = {}
+    content_keys = set()
     report_file = get_daily_report_file()
     if os.path.exists(report_file):
         with open(report_file, 'r', newline='', encoding='utf-8') as f:
@@ -580,7 +581,10 @@ def load_patient_report():
             for row in reader:
                 key = f"{row['patient_phone']}_{row['patient_first_name']}_{row['clinic_name']}_{row['note_id']}"
                 report[key] = row
-    return report
+                if row.get('status') == 'success':
+                    ckey = f"{row.get('patient_first_name','')}_{row.get('patient_last_name','')}_{row.get('patient_dob','')}_{row.get('patient_phone','')}_{row.get('note','')}"
+                    content_keys.add(ckey)
+    return report, content_keys
 
 
 def save_patient_to_report(note_data, status, failure_count=0):
@@ -593,7 +597,7 @@ def save_patient_to_report(note_data, status, failure_count=0):
         if not file_exists:
             writer.writerow(['note_id', 'patient_first_name', 'patient_last_name', 
                            'patient_phone', 'patient_dob', 'clinic_name', 'status', 'failure_count', 
-                           'last_attempt_time'])
+                           'last_attempt_time', 'note'])
         writer.writerow([
             note_data['note_id'],
             note_data['patient_first_name'],
@@ -603,14 +607,18 @@ def save_patient_to_report(note_data, status, failure_count=0):
             note_data['clinic_name'],
             status,
             failure_count,
-            datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            note_data.get('note', '')
         ])
 
 
-def filter_notes_by_report(notes, patient_report):
-    """Filter out already processed or max-failed notes."""
+def filter_notes_by_report(notes, patient_report, content_keys=None, update_api_fn=None):
+    """Filter out already processed or max-failed notes.
+    Also skips duplicate content (same patient+note) already succeeded, calling update_api if provided."""
     skipped = []
     indices_to_keep = []
+    if content_keys is None:
+        content_keys = set()
     
     for idx, note in notes.iterrows():
         key = f"{note['patient_phone']}_{note['patient_first_name']}_{note['clinic_name']}_{note['note_id']}"
@@ -623,6 +631,16 @@ def filter_notes_by_report(notes, patient_report):
             if int(record.get('failure_count', 0)) >= MAX_FAILURES:
                 skipped.append((note, f"Max failures ({MAX_FAILURES}) reached"))
                 continue
+        
+        # Check if same content was already processed successfully with a different note_id
+        ckey = f"{note['patient_first_name']}_{note['patient_last_name']}_{note.get('patient_dob','')}_{note['patient_phone']}_{note.get('note','')}"
+        if ckey in content_keys:
+            log_print(f"Duplicate content found for {note['patient_first_name']} {note['patient_last_name']} (note_id: {note['note_id']}) - skipping & updating API")
+            if update_api_fn:
+                update_api_fn(note['note_id'])
+            save_patient_to_report(dict(note), 'success', 0)
+            skipped.append((note, "Duplicate content - already processed"))
+            continue
         
         indices_to_keep.append(idx)
     

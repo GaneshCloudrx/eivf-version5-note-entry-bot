@@ -476,9 +476,9 @@ def main():
                 
                 helper.log_print(f"Fetched {len(clinics)} clinics, {len(all_notes)} notes")
                 
-                # Filter already processed patients
-                patient_report = helper.load_patient_report()
-                notes_to_process, skipped = helper.filter_notes_by_report(all_notes, patient_report)
+                # Filter already processed patients (and auto-update duplicates)
+                patient_report, content_keys = helper.load_patient_report()
+                notes_to_process, skipped = helper.filter_notes_by_report(all_notes, patient_report, content_keys, update_api)
                 
                 if skipped:
                     helper.log_print(f"Skipping {len(skipped)} already processed patients")
