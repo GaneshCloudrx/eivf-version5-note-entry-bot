@@ -537,7 +537,8 @@ def main():
                     helper.take_screenshot(prefix="login_issue")
                 else:
                     helper.take_screenshot(prefix="error_main_loop")
-                    running = False
+                    helper.log_print("Unexpected error - restarting loop in 30 seconds...")
+                    time.sleep(30)
     
     finally:
         # Stop recording when bot ends

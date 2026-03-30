@@ -581,7 +581,7 @@ def load_patient_report():
             for row in reader:
                 key = f"{row['patient_phone']}_{row['patient_first_name']}_{row['clinic_name']}_{row['note_id']}"
                 report[key] = row
-                if row.get('status') == 'success':
+                if row.get('status') == 'success' and row.get('note'):
                     ckey = f"{row.get('patient_first_name','')}_{row.get('patient_last_name','')}_{row.get('patient_dob','')}_{row.get('patient_phone','')}_{row.get('note','')}"
                     content_keys.add(ckey)
     return report, content_keys
