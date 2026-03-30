@@ -95,43 +95,37 @@ def write_note(note_title, note_text):
         # ============ STEP 2: Enter Title ============
         helper.log_print("Step 2: Entering note title...")
 
-        # Find the title field by class name: WindowsForms10.EDIT.app.0.141b42a_r7_ad1
-        # or by automation_id: txtTitleNote
         try:
-            desktop = get_desktop()
+            def _enter_title():
+                desktop = get_desktop()
+                for win in desktop.windows():
+                    try:
+                        for desc in win.descendants():
+                            try:
+                                cls = getattr(desc.element_info, "class_name", "") or ""
+                                auto_id = getattr(desc.element_info, "automation_id", "") or ""
+                                if "WindowsForms" in cls and "EDIT" in cls:
+                                    rect = desc.rectangle()
+                                    area = (rect.right - rect.left) * (rect.bottom - rect.top)
+                                    if 500 < area < 50000:
+                                        helper.log_print(f"Found title field: class='{cls}' auto_id='{auto_id}' area={area}")
+                                        desc.click_input()
+                                        time.sleep(0.2)
+                                        desc.type_keys("^a", with_spaces=True)
+                                        time.sleep(0.1)
+                                        desc.type_keys(note_title, with_spaces=True)
+                                        helper.log_print(f"Title entered: '{note_title}'")
+                                        return True
+                            except:
+                                continue
+                    except:
+                        continue
+                return False
 
-            for win in desktop.windows():
-                if title_entered:
-                    break
-                try:
-                    for desc in win.descendants():
-                        try:
-                            cls = getattr(desc.element_info, "class_name", "") or ""
-                            auto_id = getattr(desc.element_info, "automation_id", "") or ""
-
-                            # Look for Windows Forms Edit control (title field)
-                            if "WindowsForms" in cls and "EDIT" in cls:
-                                rect = desc.rectangle()
-                                area = (rect.right - rect.left) * (rect.bottom - rect.top)
-
-                                # Title field is small (area < 50000)
-                                if 500 < area < 50000:
-                                    helper.log_print(f"Found title field: class='{cls}' auto_id='{auto_id}' area={area}")
-
-                                    desc.click_input()
-                                    time.sleep(0.2)
-
-                                    # Select all and type new title
-                                    desc.type_keys("^a", with_spaces=True)
-                                    time.sleep(0.1)
-                                    desc.type_keys(note_title, with_spaces=True)
-                                    helper.log_print(f"Title entered: '{note_title}'")
-                                    title_entered = True
-                                    break
-                        except:
-                            continue
-                except:
-                    continue
+            from config import UI_ACTION_TIMEOUT
+            title_entered = helper.run_with_timeout(_enter_title, timeout_seconds=UI_ACTION_TIMEOUT * 3)
+        except TimeoutError:
+            helper.log_print("Title entry timed out - continuing without title")
         except Exception as e:
             helper.log_print(f"Error entering title: {e}")
 
