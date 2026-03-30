@@ -32,12 +32,23 @@ if (Test-Path $updateScriptPath) {
     }
 }
 
-Write-Host "Waiting 5 seconds before starting the bot..."
-Start-Sleep -Seconds 5
-
 if (-not (Test-Path $mainPath)) {
     throw "Bot entrypoint not found: $mainPath"
 }
 
 Set-Location $BotRoot
-& $PythonExe $mainPath
+
+# Restart loop - if the bot process dies for any reason, wait and restart
+while ($true) {
+    Write-Host "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') Starting bot..."
+    try {
+        & $PythonExe $mainPath
+        $exitCode = $LASTEXITCODE
+        Write-Host "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') Bot exited with code: $exitCode"
+    }
+    catch {
+        Write-Host "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') Bot crashed: $($_.Exception.Message)"
+    }
+    Write-Host "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') Restarting in 10 seconds..."
+    Start-Sleep -Seconds 10
+}
