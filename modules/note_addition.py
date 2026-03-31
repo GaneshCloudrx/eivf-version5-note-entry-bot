@@ -122,7 +122,6 @@ def write_note(note_title, note_text):
                         continue
                 return False
 
-            from config import UI_ACTION_TIMEOUT
             title_entered = helper.run_with_timeout(_enter_title, timeout_seconds=UI_ACTION_TIMEOUT * 3)
         except TimeoutError:
             helper.log_print("Title entry timed out - continuing without title")
