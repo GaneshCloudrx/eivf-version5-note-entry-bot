@@ -567,7 +567,7 @@ def get_daily_report_file():
     """Get path to today's report file."""
     os.makedirs(REPORTS_FOLDER, exist_ok=True)
     today = datetime.now().strftime('%Y-%m-%d')
-    return os.path.join(REPORTS_FOLDER, f"patient_report_{today}.csv")
+    return os.path.join(REPORTS_FOLDER, f"patient_report_{today}_v2.csv")
 
 
 def load_patient_report():
