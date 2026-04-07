@@ -4,6 +4,7 @@ Login module - handles eIVF application opening, login, and closing
 import time
 import psutil
 from pywinauto import Application, Desktop
+from pywinauto.keyboard import send_keys
 from config import SCRC_SECRET_KEY
 
 import modules.helper as helper
@@ -120,6 +121,33 @@ def open_application(app_path, target_title, max_wait_time=60):
 
     helper.log_print("Failed to open application")
     return None, None
+
+def dismiss_eivf_error_popup():
+    """Dismiss 'eIVF Error' popup by clicking OK button. Returns True if found and dismissed."""
+    try:
+        desktop = Desktop(backend="uia")
+        for win in desktop.windows():
+            try:
+                if "eIVF Error" in win.window_text():
+                    helper.log_print(f"Found eIVF Error popup: '{win.window_text()}'")
+                    try:
+                        ok_btn = win.child_window(title="OK", class_name="Button")
+                        if ok_btn.exists(timeout=2):
+                            try:
+                                ok_btn.invoke()
+                            except:
+                                ok_btn.set_focus()
+                                send_keys("{ENTER}")
+                            helper.log_print("eIVF Error popup dismissed")
+                            return True
+                    except:
+                        pass
+            except:
+                continue
+    except Exception as e:
+        helper.log_print(f"Error checking for eIVF Error popup: {e}")
+    return False
+
 
 def dismiss_update_wizard():
     """
@@ -467,6 +495,11 @@ def login(window, email, pin, clinic_code, http_address, login_status):
                         pass
             except:
                 pass
+
+        # Handle eIVF Error popup (ASPIRESA clinic)
+        if clinic_code == "ASPIRESA":
+            if dismiss_eivf_error_popup():
+                time.sleep(2)
 
         # If we get here, Rx Profile not found and no popup
         helper.log_print("Rx Profile window not detected - login may still be processing")
