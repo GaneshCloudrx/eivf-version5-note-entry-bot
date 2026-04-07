@@ -498,7 +498,9 @@ def login(window, email, pin, clinic_code, http_address, login_status):
 
         # Handle eIVF Error popup (ASPIRESA clinic) - may appear multiple times
         if clinic_code == "ASPIRESA":
-            while dismiss_eivf_error_popup():
+            for _ in range(3):
+                if not dismiss_eivf_error_popup():
+                    break
                 time.sleep(2)
 
         # If we get here, Rx Profile not found and no popup
