@@ -35,7 +35,7 @@ class HeartbeatManager:
         self.running = False
         self.thread = None
         self.lock = threading.Lock()
-        self.is_active = False  # Default to inactive (wait for first good response)
+        self.is_active = True  # Default to active — only pause on explicit active=0
         self.last_error = None
         self.last_successful_response = False
     
@@ -85,7 +85,7 @@ class HeartbeatManager:
     def _send_heartbeat(self):
         """Send heartbeat to API and update active status based on response.
         Only pauses if we get a valid response with active == 0.
-        If response is invalid/error, sets to inactive (pause) until good response.
+        On errors (403, timeout, etc.), the current state is preserved.
         """
         payload = {
             "server_name": self.server_name,
@@ -168,11 +168,9 @@ class HeartbeatManager:
                     else:
                         log_print("Bot paused by server (waiting for activation)")
             else:
-                # Invalid/error response - pause bot until we get good response
-                if self.is_active or not self.last_successful_response:
-                    # Only log if state changed or if this is first error
-                    if self.is_active:
-                        log_print(f"Bot paused due to invalid API response. Waiting for valid response... (Error: {self.last_error})")
-                    self.is_active = False
+                # Invalid/error response — keep current state, don't pause
+                # Only pause when we get a valid response with active=0
+                if not self.last_successful_response:
+                    log_print(f"Heartbeat API error (bot remains {'active' if self.is_active else 'paused'}): {self.last_error}")
                     self.last_successful_response = False
 
