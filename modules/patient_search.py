@@ -104,6 +104,33 @@ def click_patient_search_button():
         return False
 
 
+def close_flowsheet_window():
+    """
+    Close the Flowsheet MDI child window if it appears after login (e.g. HRC clinic).
+    Uses Ctrl+F4 to close the active MDI child window.
+    """
+    try:
+        app = Application(backend="win32").connect(class_name="ThunderRT6MDIForm", title="eIVF")
+        main_window = app.window(class_name="ThunderRT6MDIForm", title="eIVF")
+        
+        for child in main_window.children():
+            try:
+                child_title = child.window_text()
+                if "Flowsheet" in child_title or child.class_name() == "ThunderRT6FormDC":
+                    helper.log_print(f"Found unwanted MDI child window: '{child_title}' — closing with Ctrl+F4")
+                    main_window.set_focus()
+                    time.sleep(0.5)
+                    main_window.type_keys("^{F4}")
+                    time.sleep(1)
+                    helper.log_print("MDI child window closed")
+                    return True
+            except:
+                continue
+    except Exception as e:
+        helper.log_print(f"No Flowsheet window to close: {e}")
+    return False
+
+
 def click_patient_explorer_keyboard():
     """
     Click Patient Explorer using Home button + keyboard navigation.
@@ -113,6 +140,9 @@ def click_patient_explorer_keyboard():
         helper.log_print("Opening Patient Explorer using keyboard navigation...")
         app = Application(backend="uia").connect(title="eIVF", class_name="ThunderRT6MDIForm")
         main_window = app.window(title="eIVF", class_name="ThunderRT6MDIForm")
+        
+        # Close any Flowsheet or other MDI child windows that may block the main window
+        close_flowsheet_window()
         
         # Set focus and maximize
         main_window.set_focus()
