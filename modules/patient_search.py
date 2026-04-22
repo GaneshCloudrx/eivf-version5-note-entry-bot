@@ -106,23 +106,19 @@ def click_patient_search_button():
 
 def close_flowsheet_window():
     """
-    Close the Flowsheet MDI child window if it appears after login (e.g. HRC clinic).
-    Uses Ctrl+F4 to close the active MDI child window.
+    Close the 'Home Ver. (...)' Flowsheet window that appears after login (e.g. HRC clinic).
+    This window shows as a separate taskbar icon and blocks the main eIVF window.
     """
     try:
-        app = Application(backend="win32").connect(class_name="ThunderRT6MDIForm", title="eIVF")
-        main_window = app.window(class_name="ThunderRT6MDIForm", title="eIVF")
-        
-        for child in main_window.children():
+        desktop = Desktop(backend="uia")
+        for win in desktop.windows():
             try:
-                child_title = child.window_text()
-                if "Flowsheet" in child_title or child.class_name() == "ThunderRT6FormDC":
-                    helper.log_print(f"Found unwanted MDI child window: '{child_title}' — closing with Ctrl+F4")
-                    main_window.set_focus()
-                    time.sleep(0.5)
-                    main_window.type_keys("^{F4}")
+                win_title = win.window_text()
+                if "Home" in win_title and "Ver." in win_title:
+                    helper.log_print(f"Found Flowsheet window: '{win_title}' — closing it")
+                    win.close()
                     time.sleep(1)
-                    helper.log_print("MDI child window closed")
+                    helper.log_print("Flowsheet window closed")
                     return True
             except:
                 continue
