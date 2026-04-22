@@ -108,8 +108,6 @@ class HeartbeatManager:
                 headers=headers,
                 timeout=self.timeout
             )
-            print(response.text)
-            
             # Check if we got HTTP 200
             if response.status_code == 200:
                 try:

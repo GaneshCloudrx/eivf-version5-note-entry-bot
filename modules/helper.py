@@ -175,7 +175,8 @@ class LogQueueManager:
             )
             
             if response.status_code != 200:
-                error_msg = f"API log send failed with status {response.status_code}, response: {response.text}"
+                short_response = response.text[:150] if len(response.text) > 150 else response.text
+                error_msg = f"API log send failed with status {response.status_code}, response: {short_response}"
                 self._write_error_to_log_file(error_msg)
                 
         except requests.exceptions.RequestException as e:
