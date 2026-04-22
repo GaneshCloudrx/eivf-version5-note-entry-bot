@@ -119,15 +119,13 @@ class HeartbeatManager:
                     if isinstance(data, dict) and "code" in data and "data" in data:
                         if data.get("code") == 200:
                             data_obj = data.get("data", {})
+                            got_valid_response = True
                             if isinstance(data_obj, dict) and "active" in data_obj:
-                                # Got valid response structure
-                                got_valid_response = True
                                 active_status = data_obj.get("active", 0)
                                 new_active_state = (active_status != 0)
-                                self.last_error = None  # Clear error on success
                             else:
-                                # Missing "active" in data
-                                self.last_error = "Response missing 'active' field in data"
+                                new_active_state = True
+                            self.last_error = None
                         else:
                             # code != 200
                             self.last_error = f"API returned code {data.get('code')} (expected 200)"
