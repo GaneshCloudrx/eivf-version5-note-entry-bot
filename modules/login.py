@@ -8,6 +8,7 @@ from pywinauto.keyboard import send_keys
 from config import SCRC_SECRET_KEY
 
 import modules.helper as helper
+from modules.patient_search import close_flowsheet_window
 
 def open_application(app_path, target_title, max_wait_time=60):
     """
@@ -484,6 +485,8 @@ def login(window, email, pin, clinic_code, http_address, login_status):
                     try:
                         if win.window_text() == "eIVF" and win.element_info.class_name == "ThunderRT6MDIForm":
                             helper.log_print("Login successful - eIVF window detected")
+                            # Close Flowsheet window if present (e.g. HRC clinic)
+                            close_flowsheet_window()
                             # Maximize the eIVF window
                             try:
                                 win.maximize()
