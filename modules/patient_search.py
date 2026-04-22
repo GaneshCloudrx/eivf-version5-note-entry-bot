@@ -144,7 +144,7 @@ def open_patient_search_from_pane(main_window, clinic_name_sf=None):
     
     try:
         # Check if clinic is IVFMD
-        if clinic_name_sf and (clinic_name_sf.upper() == "IVFMD" or clinic_name_sf.upper() == "IRMS"):
+        if clinic_name_sf and (clinic_name_sf.upper() == "IVFMD" or clinic_name_sf.upper() == "IRMS" or clinic_name_sf.upper() == "HRC"):
             helper.log_print("Using keyboard navigation method for IVFMD clinic")
             result = click_patient_explorer_keyboard()
             if not result:
