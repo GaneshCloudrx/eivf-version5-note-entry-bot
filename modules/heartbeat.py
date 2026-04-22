@@ -84,7 +84,7 @@ class HeartbeatManager:
     
     def _send_heartbeat(self):
         """Send heartbeat to API and update active status based on response.
-        Only updates to active if we get a valid response with active == 1.
+        Only pauses if we get a valid response with active == 0.
         If response is invalid/error, sets to inactive (pause) until good response.
         """
         payload = {
@@ -123,7 +123,7 @@ class HeartbeatManager:
                                 # Got valid response structure
                                 got_valid_response = True
                                 active_status = data_obj.get("active", 0)
-                                new_active_state = (active_status == 1)
+                                new_active_state = (active_status != 0)
                                 self.last_error = None  # Clear error on success
                             else:
                                 # Missing "active" in data
