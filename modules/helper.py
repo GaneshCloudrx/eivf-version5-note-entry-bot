@@ -564,6 +564,28 @@ def take_screenshot(prefix="screenshot"):
 
 # === Patient Report Functions ===
 
+def _normalize_dob(dob_str):
+    """Normalize DOB to MMDDYYYY for consistent content-key comparison.
+    Handles both 'M/D/YYYY' (API) and 'MMDDYYYY' (report CSV) formats."""
+    if not dob_str:
+        return ''
+    dob_str = str(dob_str).strip()
+    if '/' in dob_str:
+        try:
+            parts = dob_str.split('/')
+            if len(parts) == 3:
+                month, day, year = parts
+                return f"{month.zfill(2)}{day.zfill(2)}{year}"
+        except Exception:
+            pass
+    return dob_str.replace('/', '')
+
+
+def _make_content_key(first, last, dob, phone, note_text):
+    """Build a content key for deduplication: patient identity + note body."""
+    return f"{first}_{last}_{_normalize_dob(dob)}_{phone}_{note_text}"
+
+
 def get_daily_report_file():
     """Get path to today's report file."""
     os.makedirs(REPORTS_FOLDER, exist_ok=True)
@@ -572,9 +594,11 @@ def get_daily_report_file():
 
 
 def load_patient_report():
-    """Load existing patient report from today's CSV."""
+    """Load existing patient report from today's CSV.
+    Returns report dict (keyed by phone_first_clinic_noteid) and
+    content_keys dict (keyed by patient identity+note, value = status)."""
     report = {}
-    content_keys = set()
+    content_keys = {}
     report_file = get_daily_report_file()
     if os.path.exists(report_file):
         with open(report_file, 'r', newline='', encoding='utf-8') as f:
@@ -582,9 +606,15 @@ def load_patient_report():
             for row in reader:
                 key = f"{row['patient_phone']}_{row['patient_first_name']}_{row['clinic_name']}_{row['note_id']}"
                 report[key] = row
-                if row.get('status') == 'success' and row.get('note'):
-                    ckey = f"{row.get('patient_first_name','')}_{row.get('patient_last_name','')}_{row.get('patient_dob','')}_{row.get('patient_phone','')}_{row.get('note','')}"
-                    content_keys.add(ckey)
+                if row.get('note'):
+                    ckey = _make_content_key(
+                        row.get('patient_first_name', ''),
+                        row.get('patient_last_name', ''),
+                        row.get('patient_dob', ''),
+                        row.get('patient_phone', ''),
+                        row.get('note', '')
+                    )
+                    content_keys[ckey] = row.get('status', '')
     return report, content_keys
 
 
@@ -615,7 +645,12 @@ def save_patient_to_report(note_data, status, failure_count=0):
 
 def filter_notes_by_report(notes, patient_report, content_keys=None, update_api_fn=None):
     """Filter out already processed or max-failed notes.
-    Also skips duplicate content (same patient+note) already succeeded, calling update_api if provided."""
+    
+    Content-based check runs FIRST: if patient firstname + lastname + phone + dob + note
+    content matches a successful entry in today's report, the update API is called directly
+    (skips portal re-entry). This prevents note duplication when the portal succeeded but
+    the update API was missed on a prior run.
+    """
     skipped = []
     indices_to_keep = []
     if content_keys is None:
@@ -624,6 +659,27 @@ def filter_notes_by_report(notes, patient_report, content_keys=None, update_api_
     for idx, note in notes.iterrows():
         key = f"{note['patient_phone']}_{note['patient_first_name']}_{note['clinic_name']}_{note['note_id']}"
         
+        # --- Content-based match (primary dedup) ---
+        # Matches on patient identity + note body regardless of note_id.
+        # Catches: same note_id with missed update, or new note_id with identical content.
+        ckey = _make_content_key(
+            note['patient_first_name'],
+            note['patient_last_name'],
+            note.get('patient_dob', ''),
+            note['patient_phone'],
+            note.get('note', '')
+        )
+        if ckey in content_keys and content_keys[ckey] == 'success':
+            log_print(f"Already processed content match (status=success) for {note['patient_first_name']} {note['patient_last_name']} "
+                       f"(note_id: {note['note_id']}) - calling update API directly")
+            if update_api_fn:
+                update_api_fn(note['note_id'])
+            if key not in patient_report or patient_report[key].get('status') != 'success':
+                save_patient_to_report(dict(note), 'success', 0)
+            skipped.append((note, "Content already processed - update API called"))
+            continue
+        
+        # --- Note-id based check (failure tracking) ---
         if key in patient_report:
             record = patient_report[key]
             if record['status'] == 'success':
@@ -632,16 +688,6 @@ def filter_notes_by_report(notes, patient_report, content_keys=None, update_api_
             if int(record.get('failure_count', 0)) >= MAX_FAILURES:
                 skipped.append((note, f"Max failures ({MAX_FAILURES}) reached"))
                 continue
-        
-        # Check if same content was already processed successfully with a different note_id
-        ckey = f"{note['patient_first_name']}_{note['patient_last_name']}_{note.get('patient_dob','')}_{note['patient_phone']}_{note.get('note','')}"
-        if ckey in content_keys:
-            log_print(f"Duplicate content found for {note['patient_first_name']} {note['patient_last_name']} (note_id: {note['note_id']}) - skipping & updating API")
-            if update_api_fn:
-                update_api_fn(note['note_id'])
-            save_patient_to_report(dict(note), 'success', 0)
-            skipped.append((note, "Duplicate content - already processed"))
-            continue
         
         indices_to_keep.append(idx)
     
